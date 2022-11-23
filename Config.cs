@@ -1,11 +1,14 @@
 using System.IO;
 using Microsoft.Extensions.Configuration;
+using NLog;
 
 namespace AudibleDownloader
 {
     public static class Config
     {
         private static IConfiguration configuration;
+
+        private static Logger log = LogManager.GetCurrentClassLogger();
 
         static Config()
         {
@@ -21,9 +24,13 @@ namespace AudibleDownloader
             configuration = builder.Build();
         }
 
-        public static string Get(string name)
+        public static string? Get(string name)
         {
-            string appSettings = configuration[name];
+            string? appSettings = configuration[name];
+            if (appSettings == null)
+            {
+                log.Warn($"Config {name} is missing");
+            }
             return appSettings;
         }
 
