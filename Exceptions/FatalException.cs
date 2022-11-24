@@ -10,5 +10,18 @@ namespace AudibleDownloader.Exceptions
         public FatalException(string message) : base(message)
         {
         }
+        public FatalException() : base()
+        {
+        }
+    }
+
+    public class RetryableException : Exception
+    {
+        public RetryableException(string message) : base(message)
+        {
+        }
+        public RetryableException() : base()
+        {
+        }
     }
 }

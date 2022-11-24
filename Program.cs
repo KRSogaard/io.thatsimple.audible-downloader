@@ -1,12 +1,10 @@
 ﻿using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 using NLog;
-using AngleSharp;
-using System;
 using System.Text;
 using System.Text.Json.Nodes;
 using AudibleDownloader.Exceptions;
-using AudibleDownloader.Services;
+using AudibleDownloader.Services.dal;
 
 namespace AudibleDownloader {
     class Listener {
@@ -38,7 +36,7 @@ namespace AudibleDownloader {
             Precondition(Config.Get("DB_PASSWORD"), "Config DB_PASSWORD is missing");
             Precondition(Config.Get("DB_NAME"), "Config DB_NAME is missing");
 
-            audibleDownloader = new AudibleDownloadManager();
+            //audibleDownloader = new AudibleDownloadManager();
             userService = new UserService();
         }
 
