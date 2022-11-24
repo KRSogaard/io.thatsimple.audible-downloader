@@ -1,4 +1,5 @@
-﻿using System;
+﻿using NLog;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -8,6 +9,7 @@ namespace AudibleDownloader.Services.dal
 {
     public class TagService
     {
+        private Logger log = LogManager.GetCurrentClassLogger();
         public Task<List<AudibleTag>> getTagsForBook(int bookId)
         {
             throw new NotImplementedException();

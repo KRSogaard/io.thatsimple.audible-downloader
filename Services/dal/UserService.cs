@@ -1,5 +1,6 @@
 ﻿using AudibleDownloader.Utils;
 using MySql.Data.MySqlClient;
+using NLog;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -10,6 +11,7 @@ namespace AudibleDownloader.Services.dal
 {
     public class UserService
     {
+        private Logger log = LogManager.GetCurrentClassLogger();
         public async Task FinishJob(string jobId)
         {
             await MSU.Execute("DELETE FROM `users_jobs` WHERE `id` = @jobId", new Dictionary<string, object> { { "@jobId", jobId } });  

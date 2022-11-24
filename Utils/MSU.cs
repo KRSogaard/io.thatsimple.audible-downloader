@@ -35,6 +35,7 @@ namespace AudibleDownloader.Utils
         {
             return QueryWithCommand(sql, parameters, (reader, cmd) => func(reader));
         }
+        
         public static async Task Execute(string sql, Dictionary<string, object> parameters)
         {
             using (MySqlConnection conn = MySQLWrapper.GetConnection())
