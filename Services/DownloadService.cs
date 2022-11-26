@@ -74,7 +74,8 @@ namespace AudibleDownloader
             {
                 HttpClientHandler handler = new HttpClientHandler()
                 {
-                    AutomaticDecompression = DecompressionMethods.All
+                    AutomaticDecompression = DecompressionMethods.All,
+                    AllowAutoRedirect = false
                 };
                 handler.Proxy = new WebProxy(new Uri("socks5://"+proxy.Host+":" + proxy.Port));
                 handler.UseProxy = true;
