@@ -65,15 +65,54 @@ namespace AudibleDownloader.Services.dal
             }
         }
 
-        public Task<AudibleNarrator> SaveOrGetNarrator(string narrator)
+        public async Task<AudibleNarrator> SaveOrGetNarrator(string narrator)
         {
             log.Trace("Saving narrator {0}", narrator);
-            
+
+            AudibleNarrator? check = await GetNarratorByName(narrator);
+            if (check != null)
+            {
+                log.Debug("Narrator {0} already exists", narrator);
+                return check;
+            }
+
+            long time = DateTimeOffset.Now.ToUnixTimeSeconds();
+            return await MSU.QueryWithCommand("INSERT INTO `narrators` (`name`, `created`) VALUES (@name, @created)",
+                new Dictionary<string, object>
+                {
+                    { "@name", narrator },
+                    { "@created", time }
+                }, async (reader, command) =>
+                {
+                    return new AudibleNarrator()
+                    {
+                        Id = (int)command.LastInsertedId,
+                        Name = narrator,
+                        Created = time
+                    };
+                });
         }
 
-        public Task<AudibleNarrator> GetNarratorByName(string name)
+        public Task<AudibleNarrator?> GetNarratorByName(string name)
         {
             log.Trace("Getting narrator by name");
+
+            return MSU.Query("SELECT * FROM `narrators` WHERE `name` = @name",
+                new Dictionary<string, object> { { "@name", name } },
+                async reader =>
+                {
+                    if (!await reader.ReadAsync())
+                    {
+                        return null;
+                    }
+
+                    return new AudibleNarrator()
+                    {
+                        Id = reader.GetInt32("id"),
+                        Name = reader.GetString("name"),
+                        Created = reader.GetInt32("created")
+                    };
+                });
         }
     }
 }

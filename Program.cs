@@ -4,12 +4,14 @@ using NLog;
 using System.Text;
 using System.Text.Json.Nodes;
 using AudibleDownloader.Exceptions;
+using AudibleDownloader.Parser;
+using AudibleDownloader.Services;
 using AudibleDownloader.Services.dal;
 
 namespace AudibleDownloader {
     class Listener {
         public static void Main(string[] args) {
-            new Listener().Run();
+            new Listener().Run().Wait();
         }
 
         Logger log = LogManager.GetCurrentClassLogger();
@@ -19,48 +21,51 @@ namespace AudibleDownloader {
 
         public Listener()
         {
-            Precondition(Config.Get("LISTENER_THREADS"), "Config LISTENER_THREADS is missing");
-            if(!int.TryParse(Config.Get("LISTENER_THREADS"), out int threads))
-            {
-                Precondition(false, "Config LISTENER_THREADS is not a number");
-            }
             Precondition(Config.Get("RABBITMQ_HOST"), "Config RABBITMQ_HOST is missing");
             Precondition(Config.Get("RABBITMQ_USER"), "Config RABBITMQ_USER is missing");
             Precondition(Config.Get("RABBITMQ_PASS"), "Config RABBITMQ_PASS is missing");
             Precondition(Config.Get("RABBITMQ_AUDIBLE_CHANNEL"), "Config RABBITMQ_AUDIBLE_CHANNEL is missing");
-
+            
+            Precondition(Config.Get("MINIO_END_POINT"), "Config MINIO_END_POINT is missing");
+            Precondition(Config.Get("MINIO_ACCESS_KEY"), "Config MINIO_ACCESS_KEY is missing");
+            Precondition(Config.Get("MINIO_SECRET_KEY"), "Config MINIO_SECRET_KEY is missing");
 
             Precondition(Config.Get("DB_HOST"), "Config DB_HOST is missing");
             Precondition(Config.Get("DB_PORT"), "Config DB_PORT is missing");
             Precondition(Config.Get("DB_USER"), "Config DB_USER is missing");
             Precondition(Config.Get("DB_PASSWORD"), "Config DB_PASSWORD is missing");
             Precondition(Config.Get("DB_NAME"), "Config DB_NAME is missing");
+            
+            Precondition(Config.Get("PROXY_LIST"), "Config PROXY_LIST is missing");
+
+            Precondition(Config.Get("LISTENER_THREADS"), "Config LISTENER_THREADS is missing");
+            if(!int.TryParse(Config.Get("LISTENER_THREADS"), out int threads))
+            {
+                Precondition(false, "Config LISTENER_THREADS is not a number");
+            }
 
             //audibleDownloader = new AudibleDownloadManager();
             userService = new UserService();
         }
 
-        public void Run() {
-            int threads = int.Parse(Config.Get("LISTENER_THREADS"));
-            log.Info($"Starting {threads} listeners");
-            List<Task> tasks = new List<Task>();
-            for(int i = 0; i < threads; i++) {
-                tasks.Add(Task.Run(() => {
-                    CreateListener();
-                }));
-            }
-            Task.WaitAll(tasks.ToArray());
-            // log.Info("Starting up");
+        public async Task Run()
+        {
+            DownloadService downloadService = new DownloadService(new StorageService());
+            DownloadResponse response = await downloadService.DownloadHtml(
+                "https://www.audible.com/series/Everybody-Loves-Large-Chests-Audiobooks/B07BN9F77V");
+            ParseSeries book = await AudibleParser.ParseSeries(response.Data);
+            Console.WriteLine(book);
+            //CreateListener();
 
-            // var config = Configuration.Default.WithDefaultLoader();
-            // var address = "https://en.wikipedia.org/wiki/List_of_The_Big_Bang_Theory_episodes";
-            // var context = BrowsingContext.New(config);
-            // var document = await context.OpenAsync(address);
-            // var cellSelector = "tr.vevent td:nth-child(3)";
-            // var cells = document.QuerySelectorAll(cellSelector);
-            // var titles = cells.Select(m => m.TextContent);
-
-            // log.Fatal("Done");
+            // int threads = int.Parse(Config.Get("LISTENER_THREADS"));
+            // log.Info($"Starting {threads} listeners");
+            // List<Task> tasks = new List<Task>();
+            // for(int i = 0; i < threads; i++) {
+            //     tasks.Add(Task.Run(() => {
+            //         CreateListener();
+            //     }));
+            // }
+            // Task.WaitAll(tasks.ToArray());
         }
 
         private void Precondition(Object? obj, string message) {
@@ -105,10 +110,7 @@ namespace AudibleDownloader {
                         channel.BasicAck(ea.DeliveryTag, false);
                     } catch (Exception e) {
                         log.Info($"Redeliver: {ea.Redelivered} and {e is FatalException}, {e.GetType().Name}");
-                        bool redeliver = true;
-                        if (ea.Redelivered || e is FatalException) {
-                            redeliver = false;
-                        }
+                        bool redeliver = !(ea.Redelivered || e is FatalException);
 
                         if (e is FatalException) {
                             log.Fatal("Failed to process message \"{0}\" will redeliver? {1}", message, redeliver);

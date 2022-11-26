@@ -14,7 +14,7 @@ namespace AudibleDownloader.Parser
         public string Asin;
 
         [JsonPropertyName("released")]
-        public int Released;
+        public long Released;
 
         [JsonPropertyName("link")]
         public string Link;
@@ -132,7 +132,7 @@ namespace AudibleDownloader.Parser
         public string Link;
 
         [JsonPropertyName("releaseDate")]
-        public int ReleaseDate;
+        public long ReleaseDate;
 
         [JsonPropertyName("lengthSeconds")]
         public int LengthSeconds;

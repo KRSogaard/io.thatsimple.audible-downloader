@@ -29,7 +29,7 @@ namespace AudibleDownloader.Services.dal
         public string Summary;
 
         [JsonPropertyName("lastUpdated")]
-        public int LastUpdated;
+        public long LastUpdated;
         
         [JsonPropertyName("series")]
         public List<SimpleSeries> Series;
@@ -78,13 +78,13 @@ namespace AudibleDownloader.Services.dal
         public int Length;
 
         [JsonPropertyName("released")]
-        public int Released;
+        public long Released;
 
         [JsonPropertyName("summary")]
         public string Summary;
 
         [JsonPropertyName("lastUpdated")]
-        public int LastUpdated;
+        public long LastUpdated;
 
         [JsonPropertyName("series")]
         public List<SimpleSeries> Series;
@@ -139,7 +139,7 @@ namespace AudibleDownloader.Services.dal
         public string Name;
 
         [JsonPropertyName("created")]
-        public int Created;
+        public long Created;
 
     }
 
@@ -153,7 +153,7 @@ namespace AudibleDownloader.Services.dal
         public string Name;
 
         [JsonPropertyName("created")]
-        public int Created;
+        public long Created;
 
     }
 
@@ -170,7 +170,7 @@ namespace AudibleDownloader.Services.dal
         public string Link;
 
         [JsonPropertyName("created")]
-        public int Created;
+        public long Created;
 
     }
 
@@ -184,7 +184,7 @@ namespace AudibleDownloader.Services.dal
         public string Tag;
 
         [JsonPropertyName("created")]
-        public int Created;
+        public long Created;
 
     }
 
@@ -207,10 +207,10 @@ namespace AudibleDownloader.Services.dal
         public string Name;
 
         [JsonPropertyName("lastUpdated")]
-        public int LastUpdated;
+        public long LastUpdated;
 
         [JsonPropertyName("created")]
-        public int Created;
+        public long Created;
 
     }
 

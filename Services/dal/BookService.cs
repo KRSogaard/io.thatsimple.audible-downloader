@@ -59,7 +59,7 @@ namespace AudibleDownloader.Services.dal
             }
 
             var authors = authorService.getAuthorsForBook(bookId);
-            var tags = tagService.getTagsForBook(bookId);
+            var tags = tagService.GetTagsForBook(bookId);
             var narrators = narratorService.getNarratorsForBook(bookId);
             var categories = categoryService.getCategoriesForBook(bookId);
 
@@ -104,7 +104,7 @@ namespace AudibleDownloader.Services.dal
                 });
         }
 
-        public async Task<AudibleBook> SaveBook(string asin, string link, string title, int runtime, int released, string summary)
+        public async Task<AudibleBook> SaveBook(string asin, string link, string title, int runtime, long released, string summary)
         {
             log.Trace("Saving book {0}", title);
             var checkBook = await getBookASIN(asin);

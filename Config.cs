@@ -17,11 +17,13 @@ namespace AudibleDownloader
                     .SetBasePath(Directory.GetCurrentDirectory())
                     .AddJsonFile("appSettings.json",
                     optional: true,
-                    reloadOnChange: true)
-                    .AddJsonFile("appSettings.Development.json",
-                    optional: true,
                     reloadOnChange: true);
-            configuration = builder.Build();
+            
+                // .AddJsonFile("appSettings.Development.json",
+                // optional: true,
+                // reloadOnChange: true)
+            configuration = builder.Build(); 
+            Console.WriteLine("Hi");
         }
 
         public static string? Get(string name)

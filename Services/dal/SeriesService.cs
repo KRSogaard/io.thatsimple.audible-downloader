@@ -1,38 +1,129 @@
 ﻿using NLog;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using AudibleDownloader.Utils;
+using MySql.Data.MySqlClient;
 
 namespace AudibleDownloader.Services.dal
 {
     public class SeriesService
     {
         private Logger log = LogManager.GetCurrentClassLogger();
-        public Task AddBookToSeries(int bookId, int id, string bookNumber)
+        public async Task AddBookToSeries(int bookId, int seriesId, string bookNumber)
         {
-            throw new NotImplementedException();
+            log.Trace("adding book {0} to series {1} with book number {2}", bookId, seriesId, bookNumber);
+            
+            Tuple<string>? storedBookNumber = await MSU.Query("SELECT * FROM `series_books` WHERE `book_id` = @bookId AND `series_id` = @seriesId", 
+                new Dictionary<string, object>() { { "@bookId", bookId }, { "@seriesId", seriesId } }, async (reader) =>
+                {
+                    if (!await reader.ReadAsync())
+                    {
+                        return null;
+                    }
+
+                    return new Tuple<string>(reader.GetString("book_number"));
+                });
+
+            if (storedBookNumber == null)
+            {
+                await MSU.Execute("INSERT INTO `series_books` (`book_id`, `series_id`, `book_number`, `created`) VALUES (@bookId, @seriesId, @bookNumber, @created)", 
+                    new Dictionary<string, object>()
+                    {
+                        { "@bookId", bookId }, 
+                        { "@seriesId", seriesId }, 
+                        { "@bookNumber", String.IsNullOrWhiteSpace(bookNumber) ? null : bookNumber.Trim() }, 
+                        { "@created", DateTime.Now }
+                    });
+                await UpdateSeries(seriesId);
+            }
+            else
+            {
+                if (storedBookNumber.Item1 != null && storedBookNumber.Item1 != bookNumber)
+                {
+                    log.Debug("Updating the book number to {0} for book {1} in series {2}", bookNumber, bookId, seriesId);
+                    await MSU.Execute("UPDATE `series_books` SET `book_number` = @bookNumber WHERE `book_id` = @bookId AND `series_id` = @seriesId", 
+                        new Dictionary<string, object>()
+                        {
+                            { "@bookId", bookId }, 
+                            { "@seriesId", seriesId }, 
+                            { "@bookNumber", String.IsNullOrWhiteSpace(bookNumber) ? null : bookNumber.Trim() }
+                        });
+                    await UpdateSeries(seriesId);
+                }
+            }
         }
 
-        public Task<AudibleSeries> GetSeriesAsin(string seriesAsin)
+        private Task UpdateSeries(int seriesId)
         {
-            throw new NotImplementedException();
+            return MSU.Execute("UPDATE `series` SET `last_updated` = @lastUpdated WHERE `id` = @seriesId", 
+                new Dictionary<string, object>() { { "@lastUpdated", DateTimeOffset.Now.ToUnixTimeSeconds() }, { "@seriesId", seriesId } });
         }
 
-        public Task<AudibleSeries> SaveOrGetSeries(string asin, string name, string link, string? summary)
+        public Task<AudibleSeries?> GetSeriesAsin(string seriesAsin)
         {
-            throw new NotImplementedException();
+            return MSU.Query("SELECT * FROM `series` ' + 'WHERE `series`.asin = @asin", 
+                new Dictionary<string, object>() { { "@asin", seriesAsin } }, async (reader) =>
+            {
+                if (!await reader.ReadAsync())
+                    return null;
+                return ParseSeriesReader(reader);
+            });
+        }
+
+        private AudibleSeries ParseSeriesReader(MySqlDataReader reader)
+        {
+            return new AudibleSeries()
+            {
+                Id = reader.GetInt32("id"),
+                Asin = reader.GetString("asin"),
+                Name = reader.GetString("name"),
+                Link = reader.GetString("link"),
+                Summary = reader.GetString("summary"),
+                LastUpdated = reader.GetInt64("last_updated"),
+                Created = reader.GetInt64("created")
+            };
+        }
+
+        public async Task<AudibleSeries> SaveOrGetSeries(string asin, string name, string link, string? summary)
+        {
+            log.Trace("Saving series {0} ({1})", name, asin);
+
+            AudibleSeries? check = await GetSeriesAsin(asin);
+            if (check != null)
+            {
+                log.Debug("Series {0} ({1}) already exists", name, asin);
+                if (summary != null && summary.Length > 0 && check.Summary != summary)
+                {
+                    log.Debug("Updating summary for series {0} summary", name);
+                    await MSU.Execute("UPDATE `series` SET `summary` = @summary WHERE `id` = @seriesId", 
+                        new Dictionary<string, object>() { { "@summary", summary }, { "@seriesId", check.Id } });
+                }
+
+                return check;
+            }
+
+            log.Debug("Series did not exist, creating new series {0} ({1})", name, asin);
+            await MSU.Execute("INSERT INTO `series` (`asin`, `link`, `name`, `last_updated`, `summary`, `created`) VALUES (@asin, @link, @name, @lastUpdated, @summary, @created)", 
+                new Dictionary<string, object>()
+                {
+                    { "@asin", asin }, 
+                    { "@link", link }, 
+                    { "@name", name }, 
+                    { "@lastUpdated", DateTimeOffset.Now.ToUnixTimeSeconds() }, 
+                    { "@summary", summary }, 
+                    { "@created", DateTimeOffset.Now.ToUnixTimeSeconds() }
+                });
+            return await GetSeriesAsin(asin);
         }
 
         public Task SetSeriesShouldDownload(int id, bool v)
         {
-            throw new NotImplementedException();
+            return MSU.Execute("UPDATE `series` SET `should_download` = @download WHERE `id` = @id", 
+                new Dictionary<string, object>() { { "@download", v }, { "@id", id } });
         }
 
-        public Task UpdateBookNumber(int id1, int id2, string bookNumber)
+        public Task UpdateBookNumber(int bookId, int seriesId, string bookNumber)
         {
-            throw new NotImplementedException();
+            return MSU.Execute("UPDATE `series_books` SET `book_number` = @bookNumber WHERE `book_id` = @bookId AND `series_id` = @seriesId", 
+                new Dictionary<string, object>() { { "@bookNumber", bookNumber }, { "@bookId", bookId }, { "@seriesId", seriesId } });
         }
     }
 }

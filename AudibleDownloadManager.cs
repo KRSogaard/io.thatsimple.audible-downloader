@@ -1,3 +1,4 @@
+using System.Net;
 using AudibleDownloader.Exceptions;
 using AudibleDownloader.Parser;
 using AudibleDownloader.Services;
@@ -21,10 +22,11 @@ namespace AudibleDownloader
         private SeriesService seriesService;
         private UserService userService;
         private StorageService storageService;
+        private DownloadService downloadService;
 
         public AudibleDownloadManager(BookService bookService, AuthorService authorService, NarratorService narratorService,
             CategoryService categoryService, TagService tagService, SeriesService seriesService, UserService userService,
-            StorageService storageService)
+            StorageService storageService, DownloadService downloadService)
         {
             this.bookService = bookService;
             this.authorService = authorService;
@@ -34,6 +36,7 @@ namespace AudibleDownloader
             this.seriesService = seriesService;
             this.userService = userService;
             this.storageService = storageService;
+            this.downloadService = downloadService;
         }
 
         public async Task DownloadBook(string url, string? userId = null, bool addToUser = false, bool force = false)
@@ -92,25 +95,25 @@ namespace AudibleDownloader
             }
 
             log.Info("Downloading series");
-            DownloadResponse downloadResponse = await DownloadService.DownloadHtml(url);
-            if (downloadResponse == null || downloadResponse.StatusCode != 200)
+            DownloadResponse downloadResponse = await downloadService.DownloadHtml(url);
+            if (downloadResponse == null || downloadResponse.StatusCode != HttpStatusCode.OK)
             {
                 log.Warn("Failed to download series retrying after 1 sec: " + url);
                 await Task.Delay(1000);
-                downloadResponse = await DownloadService.DownloadHtml(url);
+                downloadResponse = await downloadService.DownloadHtml(url);
             }
             
-            if (downloadResponse != null && downloadResponse.StatusCode == 404)
+            if (downloadResponse != null && downloadResponse.StatusCode == HttpStatusCode.NotFound)
             {
                 log.Error("Series no longer exists, skipping download: " + url);
                 return;
             }
-            if (downloadResponse != null && downloadResponse.StatusCode == 500)
+            if (downloadResponse != null && downloadResponse.StatusCode == HttpStatusCode.InternalServerError)
             {
                 log.Error("Download returned 500 error: " + url);
                 throw new RetryableException();
             }
-            if (downloadResponse == null || downloadResponse.StatusCode != 200)
+            if (downloadResponse == null || downloadResponse.StatusCode != HttpStatusCode.OK)
             {
                 log.Error("Failed to download series with unknown status code " + downloadResponse?.StatusCode + ": " + url);
                 return;
@@ -124,7 +127,7 @@ namespace AudibleDownloader
             }
 
             DateTime start = DateTime.Now;
-            ParseSeries parsedSeries = AudibleParser.ParseSeries(html);
+            ParseSeries parsedSeries = await AudibleParser.ParseSeries(html);
             log.Debug("Parsing series took: " + (DateTime.Now - start).TotalMilliseconds + " ms");
             storedSeries = await seriesService.SaveOrGetSeries(parsedSeries.Asin, parsedSeries.Name, parsedSeries.Link, parsedSeries.Summary);
             log.Debug($"Series {storedSeries.Name} has {parsedSeries.Books.Count} books");
@@ -137,13 +140,13 @@ namespace AudibleDownloader
                     continue;
                 }
                 
-                AudibleBook savedBook = await bookService.getBookASIN(book.Asin);
+                AudibleBook? savedBook = await bookService.getBookASIN(book.Asin);
                 if (savedBook == null)
                 {
                     log.Debug("Book " + book.Asin + " not found in database, creating temp book");
                     int bookId = await bookService.CreateTempBook(book.Asin, book.Link);
                     await seriesService.AddBookToSeries(bookId, storedSeries.Id, book.BookNumber);
-                    int? jobId = userId != null ? userService.CreateJob(userId, "book", JsonSerializer.Serialize(new BookData() { Title = book.Title, Asin = book.Asin, Link = book.Link })) : null;
+                    int? jobId = userId != null ? await userService.CreateJob(userId, "book", JsonSerializer.Serialize(new BookData() { Title = book.Title, Asin = book.Asin, Link = book.Link })) : null;
                     await QueueWrapper.SendDownloadBook(book.Link, jobId, userId ?? null);
                 } else {
                     var series = savedBook.Series.Where(s => String.Equals(s.Asin, storedSeries.Asin, StringComparison.InvariantCultureIgnoreCase)).ToList();
@@ -230,24 +233,24 @@ namespace AudibleDownloader
         private async Task<AudibleBook?> DownloadAndCreateBook(string url, string? userId)
         {
             log.Debug("Downloading and create book from URL: " + url);
-            DownloadResponse downloadResponse = await DownloadService.DownloadHtml(url);
-            if (downloadResponse == null || downloadResponse.StatusCode != 200)
+            DownloadResponse downloadResponse = await downloadService.DownloadHtml(url);
+            if (downloadResponse == null || downloadResponse.StatusCode != HttpStatusCode.OK)
             {
                 log.Warn("Failed to download book retrying after 1 sec: " + url);
                 await Task.Delay(1000);
-                downloadResponse = await DownloadService.DownloadHtml(url);
+                downloadResponse = await downloadService.DownloadHtml(url);
             }
-            if (downloadResponse != null && downloadResponse.StatusCode == 404)
+            if (downloadResponse != null && downloadResponse.StatusCode == HttpStatusCode.NotFound)
             {
                 log.Error("Book no longer exists, skipping download: " + url);
                 return null;
             }
-            if (downloadResponse != null && downloadResponse.StatusCode == 500)
+            if (downloadResponse != null && downloadResponse.StatusCode == HttpStatusCode.InternalServerError)
             {
                 log.Error("Download returned 500 error: " + url);
                 throw new RetryableException();
             }
-            if (downloadResponse == null || downloadResponse.StatusCode != 200)
+            if (downloadResponse == null || downloadResponse.StatusCode != HttpStatusCode.OK)
             {
                 log.Error("Failed to download book with unknown status code " + downloadResponse?.StatusCode + ": " + url);
                 return null;
@@ -261,7 +264,7 @@ namespace AudibleDownloader
             }
 
             DateTime start = DateTime.Now;
-            ParseAudioBook book = AudibleParser.ParseBook(html);
+            ParseAudioBook book = await AudibleParser.ParseBook(html);
             log.Debug("Parsing book took: " + (DateTime.Now - start).TotalMilliseconds + " ms");
             if (book != null)
             {
@@ -288,7 +291,7 @@ namespace AudibleDownloader
                 await seriesService.AddBookToSeries(bookId, savedSeries.Id, series.BookNumber);
 
                 await seriesService.SetSeriesShouldDownload(savedSeries.Id, true);
-                int? jobId = userId != null ? userService.CreateJob(userId, "series", JsonSerializer.Serialize(new SeriesData() { Name = savedSeries.Name, Asin = savedSeries.Asin, Link = savedSeries.Link })) : null;
+                int? jobId = userId != null ? await userService.CreateJob(userId, "series", JsonSerializer.Serialize(new SeriesData() { Name = savedSeries.Name, Asin = savedSeries.Asin, Link = savedSeries.Link })) : null;
                 await QueueWrapper.SendDownloadSeries(savedSeries.Link, jobId, userId ?? null); 
             }
 
@@ -336,7 +339,7 @@ namespace AudibleDownloader
             log.Debug("Downloading book image");
             if (!await storageService.HasImage(newBook.Asin)) {
                 log.Debug("Book image does not exist, downloading");
-                await DownloadService.DownloadImage(imageUrl, newBook.Asin);
+                await downloadService.DownloadImage(imageUrl, newBook.Asin);
             }
             else
             {
