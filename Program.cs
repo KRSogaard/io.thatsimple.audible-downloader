@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json.Nodes;
 using AudibleDownloader.Exceptions;
 using AudibleDownloader.Parser;
+using AudibleDownloader.Queue;
 using AudibleDownloader.Services;
 using AudibleDownloader.Services.dal;
 
@@ -16,8 +17,17 @@ namespace AudibleDownloader {
 
         Logger log = LogManager.GetCurrentClassLogger();
         bool shutDown = false;
-        AudibleDownloadManager audibleDownloader;
-        UserService userService;
+        private AudibleDownloadManager audibleDownloader;
+        private BookService bookService;
+        private AuthorService authorService;
+        private NarratorService narratorService;
+        private CategoryService categoryService;
+        private TagService tagService;
+        private SeriesService seriesService;
+        private UserService userService;
+        private StorageService storageService;
+        private DownloadService downloadService;
+        private DownloadQueue downloadQueue;
 
         public Listener()
         {
@@ -43,19 +53,28 @@ namespace AudibleDownloader {
             {
                 Precondition(false, "Config LISTENER_THREADS is not a number");
             }
+           
 
-            //audibleDownloader = new AudibleDownloadManager();
+            authorService = new AuthorService();
+            narratorService = new NarratorService();
+            categoryService = new CategoryService();
+            tagService = new TagService();
+            seriesService = new SeriesService();
             userService = new UserService();
+            storageService = new StorageService();
+            downloadQueue = new DownloadQueue();
+            bookService = new BookService(authorService, narratorService, categoryService, tagService);
+            downloadService = new DownloadService(storageService);
+            
+            audibleDownloader = new AudibleDownloadManager(
+                bookService, authorService, narratorService,
+                categoryService, tagService, seriesService, userService,
+                storageService, downloadService, downloadQueue);
         }
 
         public async Task Run()
         {
-            DownloadService downloadService = new DownloadService(new StorageService());
-            DownloadResponse response = await downloadService.DownloadHtml(
-                "https://www.audible.com/series/Everybody-Loves-Large-Chests-Audiobooks/B07BN9F77V");
-            ParseSeries book = await AudibleParser.ParseSeries(response.Data);
-            Console.WriteLine(book);
-            //CreateListener();
+            CreateListener();
 
             // int threads = int.Parse(Config.Get("LISTENER_THREADS"));
             // log.Info($"Starting {threads} listeners");
@@ -79,111 +98,104 @@ namespace AudibleDownloader {
             }
         }
 
-        void CreateListener() {
-            var host = Config.Get("RABBITMQ_HOST");
-            var user = Config.Get("RABBITMQ_USER");
-            var pass = Config.Get("RABBITMQ_PASS");
-            var channelName = Config.Get("RABBITMQ_AUDIBLE_CHANNEL");
-
-            log.Info($"Creating RabbitMQ listerner with \"{host}\" user {user} channel {channelName}");
-
-            var factory = new ConnectionFactory() { HostName = host, UserName = user, Password = pass };
-            using (var connection = factory.CreateConnection())
-            using (var channel = connection.CreateModel())
+        void CreateListener()
+        {
+            downloadQueue.GetChannel(async (channel, channelName) =>
             {
-                channel.QueueDeclare(queue: channelName,
-                                    durable: false,
-                                    exclusive: false,
-                                    autoDelete: false,
-                                    arguments: null);
-
+                channel.BasicQos(0, 1, false);
+                
                 var consumer = new EventingBasicConsumer(channel);
                 consumer.Received += async (model, ea) =>
                 {
                     var body = ea.Body.ToArray();
                     var message = Encoding.UTF8.GetString(body);
-                    try {
-                        log.Debug($"Received {message}, Redelivery? {ea.Redelivered}");
+                    try
+                    {
+                        log.Debug($"Received {message.Replace("\n", " ")}, Redelivery? {ea.Redelivered}");
 
                         await OnMessage(message);
 
                         channel.BasicAck(ea.DeliveryTag, false);
-                    } catch (Exception e) {
-                        log.Info($"Redeliver: {ea.Redelivered} and {e is FatalException}, {e.GetType().Name}");
+                    }
+                    catch (RetryableException e)
+                    {
+                        log.Warn(e, "Got a retryable exception, requeueing message");
+                        channel.BasicNack(ea.DeliveryTag, false, true);
+                    }
+                    catch (FatalException e)
+                    {
+                        log.Fatal(e, "Got a fatal exception, not requeueing message");
+                        channel.BasicNack(ea.DeliveryTag, false, false);
+                    }
+                    catch (Exception e)
+                    {
                         bool redeliver = !(ea.Redelivered || e is FatalException);
-
-                        if (e is FatalException) {
-                            log.Fatal("Failed to process message \"{0}\" will redeliver? {1}", message, redeliver);
-                        } else {
-                            log.Fatal(e, "Failed to process message \"{0}\" will redeliver? {1}:", message, redeliver);
-                        }
+                        log.Fatal(e, "Got unknown exception while processing message. Will redeliver? {0}", redeliver);
                         channel.BasicNack(ea.DeliveryTag, false, redeliver);
                     }
                 };
+                // This kicks off the reading from the queue
                 channel.BasicConsume(queue: channelName,
-                                    autoAck: false,
-                                    consumer: consumer);
-                while(!shutDown) {
+                    autoAck: false,
+                    consumer: consumer);
+                while (!shutDown)
+                {
                     Task.Delay(1000).Wait();
                 }
-            }
+            }).Wait();
         }
 
         async Task OnMessage(String message) {
             JsonNode? jsonParse;
-            try {
-                jsonParse = JsonNode.Parse(message);
-                if (jsonParse == null){
-                    log.Error("Failed to parse message \"{0}\"", message);
-                    throw new FatalException("Failed to parse message");
-                }
-                var jsonObject = jsonParse.AsObject();
-
-
-                var userIdObj = jsonObject["userId"];
-                var addToUserObj = jsonObject["addToUser"];
-                var forceObj = jsonObject["force"];
-
-                string? jobId = jsonObject["jobId"]?.ToString();
-                string? userId = jsonObject["userId"]?.ToString();
-                bool addTouser = false;
-                bool force = false;
-                if (jsonObject["addToUser"] != null) {
-                    addTouser = jsonObject["addToUser"]?.ToString().ToLower() == "true";
-                }
-                if (jsonObject["force"] != null) {
-                    force = jsonObject["force"]?.ToString().ToLower() == "true";
-                }
-
-                var type = jsonObject["type"]?.ToString();
-                if (type == null) {
-                    log.Error("Failed to parse message \"{0}\" missing url", message);
-                    throw new FatalException("Failed to parse message");
-                }
-
-                var url = jsonObject["url"]?.ToString().Split('?')[0];
-                if (url == null) {
-                    log.Error("Failed to parse message \"{0}\" missing url", message);
-                    throw new FatalException("Failed to parse message");
-                }
-
-                switch(type.Trim()) {
-                    case "book":
-                        await audibleDownloader.DownloadBook(url, userId, addTouser, force);
-                        break;
-                    case "series":
-                        await audibleDownloader.DownloadSeries(url, userId, force);
-                        break;
-                    default:
-                        log.Error("Unknown message type \"{0}\"", type);
-                        throw new FatalException("Unknown message type");
-                }
-                if (jobId != null) {
-                    await userService.FinishJob(jobId);
-                }
-            } catch (Exception e) {
-                log.Error(e, "Failed to parse message \"{0}\"", message);
+            
+            jsonParse = JsonNode.Parse(message);
+            if (jsonParse == null){
+                log.Error("Failed to parse message \"{0}\"", message);
                 throw new FatalException("Failed to parse message");
+            }
+            var jsonObject = jsonParse.AsObject();
+
+
+            var userIdObj = jsonObject["userId"];
+            var addToUserObj = jsonObject["addToUser"];
+            var forceObj = jsonObject["force"];
+
+            string? jobId = jsonObject["jobId"]?.ToString();
+            string? userId = jsonObject["userId"]?.ToString();
+            bool addTouser = false;
+            bool force = false;
+            if (jsonObject["addToUser"] != null) {
+                addTouser = jsonObject["addToUser"]?.ToString().ToLower() == "true";
+            }
+            if (jsonObject["force"] != null) {
+                force = jsonObject["force"]?.ToString().ToLower() == "true";
+            }
+
+            var type = jsonObject["type"]?.ToString();
+            if (type == null) {
+                log.Error("Failed to parse message \"{0}\" missing url", message);
+                throw new FatalException("Failed to parse message");
+            }
+
+            var url = jsonObject["url"]?.ToString().Split('?')[0];
+            if (url == null) {
+                log.Error("Failed to parse message \"{0}\" missing url", message);
+                throw new FatalException("Failed to parse message");
+            }
+
+            switch(type.Trim()) {
+                case "book":
+                    await audibleDownloader.DownloadBook(url, userId, addTouser, force);
+                    break;
+                case "series":
+                    await audibleDownloader.DownloadSeries(url, userId, force);
+                    break;
+                default:
+                    log.Error("Unknown message type \"{0}\"", type);
+                    throw new FatalException("Unknown message type");
+            }
+            if (jobId != null) {
+                await userService.FinishJob(jobId);
             }
         }
     }

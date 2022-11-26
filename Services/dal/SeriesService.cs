@@ -19,7 +19,7 @@ namespace AudibleDownloader.Services.dal
                         return null;
                     }
 
-                    return new Tuple<string>(reader.GetString("book_number"));
+                    return new Tuple<string>(MSU.GetStringOrNull(reader,"book_number"));
                 });
 
             if (storedBookNumber == null)
@@ -30,7 +30,7 @@ namespace AudibleDownloader.Services.dal
                         { "@bookId", bookId }, 
                         { "@seriesId", seriesId }, 
                         { "@bookNumber", String.IsNullOrWhiteSpace(bookNumber) ? null : bookNumber.Trim() }, 
-                        { "@created", DateTime.Now }
+                        { "@created", DateTimeOffset.Now.ToUnixTimeSeconds() }
                     });
                 await UpdateSeries(seriesId);
             }
@@ -59,7 +59,7 @@ namespace AudibleDownloader.Services.dal
 
         public Task<AudibleSeries?> GetSeriesAsin(string seriesAsin)
         {
-            return MSU.Query("SELECT * FROM `series` ' + 'WHERE `series`.asin = @asin", 
+            return MSU.Query("SELECT * FROM `series` WHERE `series`.asin = @asin", 
                 new Dictionary<string, object>() { { "@asin", seriesAsin } }, async (reader) =>
             {
                 if (!await reader.ReadAsync())
@@ -76,9 +76,10 @@ namespace AudibleDownloader.Services.dal
                 Asin = reader.GetString("asin"),
                 Name = reader.GetString("name"),
                 Link = reader.GetString("link"),
-                Summary = reader.GetString("summary"),
+                Summary = MSU.GetStringOrNull(reader, "summary"),
                 LastUpdated = reader.GetInt64("last_updated"),
-                Created = reader.GetInt64("created")
+                Created = reader.GetInt64("created"),
+                ShouldDownload = MSU.GetInt32OrNull(reader, "should_download") == 1
             };
         }
 
@@ -93,15 +94,18 @@ namespace AudibleDownloader.Services.dal
                 if (summary != null && summary.Length > 0 && check.Summary != summary)
                 {
                     log.Debug("Updating summary for series {0} summary", name);
-                    await MSU.Execute("UPDATE `series` SET `summary` = @summary WHERE `id` = @seriesId", 
-                        new Dictionary<string, object>() { { "@summary", summary }, { "@seriesId", check.Id } });
+                    await MSU.Execute("UPDATE `series` SET `summary` = @summary, `should_download` = @shouldDownload WHERE `id` = @seriesId", 
+                        new Dictionary<string, object>() { 
+                            { "@summary", summary }, 
+                            { "@seriesId", check.Id },
+                            { "@shouldDownload", false } });
                 }
 
                 return check;
             }
 
-            log.Debug("Series did not exist, creating new series {0} ({1})", name, asin);
-            await MSU.Execute("INSERT INTO `series` (`asin`, `link`, `name`, `last_updated`, `summary`, `created`) VALUES (@asin, @link, @name, @lastUpdated, @summary, @created)", 
+            log.Info("Creating new series {0} ({1})", name, asin);
+            await MSU.Execute("INSERT INTO `series` (`asin`, `link`, `name`, `last_updated`, `summary`, `created`, `should_download`) VALUES (@asin, @link, @name, @lastUpdated, @summary, @created, @shouldDownload)", 
                 new Dictionary<string, object>()
                 {
                     { "@asin", asin }, 
@@ -109,7 +113,8 @@ namespace AudibleDownloader.Services.dal
                     { "@name", name }, 
                     { "@lastUpdated", DateTimeOffset.Now.ToUnixTimeSeconds() }, 
                     { "@summary", summary }, 
-                    { "@created", DateTimeOffset.Now.ToUnixTimeSeconds() }
+                    { "@created", DateTimeOffset.Now.ToUnixTimeSeconds() },
+                    { "@shouldDownload", true }
                 });
             return await GetSeriesAsin(asin);
         }

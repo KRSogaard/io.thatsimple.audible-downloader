@@ -86,8 +86,8 @@ namespace AudibleDownloader.Services.dal
 
                 IdValueInfo mapPart = new IdValueInfo
                 {
-                    Id = bookId,
-                    Value = author.Id.ToString()
+                    Id = author.Id,
+                    Value = author.Name
                 };
                 await MSU.Execute("UPDATE `books` SET `last_updated` = @lastUpdate, `authors_cache` = concat(ifnull(`authors_cache`,\"\"), @cache) WHERE `id` = @bookId",
                     new Dictionary<string, object> { { "@lastUpdate", DateTimeOffset.Now.ToUnixTimeSeconds() }, { "@cache", MapUtil.CreateMapPart(mapPart) }, { "@bookId", bookId } });
@@ -106,21 +106,18 @@ namespace AudibleDownloader.Services.dal
                 return check;
             }
 
+            log.Info("Creating new author {0}", name);
             return await MSU.QueryWithCommand("INSERT INTO `authors` (`name`, `asin`, `link`, `created`) VALUES (@name, @asin, @link, @created)", 
                 new Dictionary<string, object> { { "@name", name }, { "@asin", asin }, { "@link", link }, { "@created", DateTimeOffset.Now.ToUnixTimeSeconds() } },
                 async (MySqlDataReader reader, MySqlCommand cmd) =>
                 {
-                    if (reader != null && await reader.ReadAsync())
+                    return new AudibleAuthor
                     {
-                        return new AudibleAuthor
-                        {
-                            Id = (int)cmd.LastInsertedId,
-                            Name = reader.GetString("name"),
-                            Asin = reader.GetString("asin"),
-                            Link = reader.GetString("link"),
-                        };
-                    }
-                    throw new Exception("Was unable to save author");
+                        Id = (int)cmd.LastInsertedId,
+                        Name = name,
+                        Asin = asin,
+                        Link = link,
+                    };
                 });
         }
     }

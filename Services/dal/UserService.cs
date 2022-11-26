@@ -14,6 +14,7 @@ namespace AudibleDownloader.Services.dal
         private Logger log = LogManager.GetCurrentClassLogger();
         public async Task FinishJob(string jobId)
         {
+            log.Debug("Finishing job id {0}", jobId);
             await MSU.Execute("DELETE FROM `users_jobs` WHERE `id` = @jobId", new Dictionary<string, object> { { "@jobId", jobId } });  
         }
 
@@ -38,6 +39,7 @@ namespace AudibleDownloader.Services.dal
 
         public Task<int> CreateJob(string userId, string type, string data)
         {
+            log.Debug("Creating new {1} job for user {0}", userId, type);
             return MSU.QueryWithCommand("INSERT INTO `users_jobs` (`user_id`, `created`, `type`, `payload`) VALUES (@userId, @created, @type, @payload)",
                 new Dictionary<string, object> { { "@userId", userId }, { "@created", DateTimeOffset.Now.ToUnixTimeSeconds() }, { "@type", type }, { "@payload", data } },
                 async (reader, cmd) =>

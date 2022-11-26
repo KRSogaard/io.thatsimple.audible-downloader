@@ -66,20 +66,18 @@ namespace AudibleDownloader.Services.dal
                 log.Trace("Category {0} already exists");
                 return check;
             }
-            return await MSU.QueryWithCommand("INSERT INTO `categories` (`name`, `link`, `created`) VALUES (@name, @link, @created)",
-                new Dictionary<string, object> { { "@name", name }, { "@link", link }, { "@created", DateTimeOffset.Now.ToUnixTimeSeconds() } }, async (reader, cmd) =>
-                {
-                    if (!await reader.ReadAsync())
-                    {
-                        throw new Exception("Failed to create category");
-                    }
 
+            log.Info("Saving new category {0}", name);
+            long created = DateTimeOffset.Now.ToUnixTimeSeconds();
+            return await MSU.QueryWithCommand("INSERT INTO `categories` (`name`, `link`, `created`) VALUES (@name, @link, @created)",
+                new Dictionary<string, object> { { "@name", name }, { "@link", link }, { "@created", created } }, async (reader, cmd) =>
+                {
                     return new AudibleCategory
                     {
                         Id = (int)cmd.LastInsertedId,
-                        Name = reader.GetString("name"),
-                        Link = reader.GetString("link"),
-                        Created = reader.GetInt32("created")
+                        Name = name,
+                        Link = link,
+                        Created = created
                     };
                 });
         }

@@ -21,7 +21,7 @@ namespace AudibleDownloader
     {
         private StorageService storageService;
         private Logger log = LogManager.GetCurrentClassLogger();
-        private List<HttpClient> clients;
+        private List<Tuple<HttpClient, ProxyWrapper>> clients;
         private List<ProxyWrapper> proxies;
         private Random random;
 
@@ -69,7 +69,7 @@ namespace AudibleDownloader
                 proxies.Add(proxy);
             }
             
-            clients = new List<HttpClient>();
+            clients = new List<Tuple<HttpClient, ProxyWrapper>>();
             foreach (ProxyWrapper proxy in proxies)
             {
                 HttpClientHandler handler = new HttpClientHandler()
@@ -83,13 +83,14 @@ namespace AudibleDownloader
                 client.DefaultRequestHeaders.Add("User-Agent", GetUserAgent());
                 client.DefaultRequestHeaders.Add("Accept-Encoding", "gzip, deflate, br");
                 client.DefaultRequestHeaders.Add("Accept-Language", "en-US,en;q=0.5");
-                clients.Add(client);
+                clients.Add(new Tuple<HttpClient, ProxyWrapper>(client, proxy));
             }
         }
 
-        private HttpClient GetClient()
+        private Tuple<HttpClient, ProxyWrapper> GetClient()
         {
             int index = random.Next(0, clients.Count - 1);
+            log.Debug("Using client index: " + index + " for proxy: " + clients[index].Item2.Host + ":" + clients[index].Item2.Port);
             return clients[index];
         }
 
@@ -112,27 +113,36 @@ namespace AudibleDownloader
                     Data = cached
                 };
             }
+
             try
             {
-                HttpClient client = GetClient();
+                Tuple<HttpClient, ProxyWrapper> client = GetClient();
                 CancellationTokenSource s_cts = new CancellationTokenSource();
                 s_cts.CancelAfter(new TimeSpan(0, 0, 30));
-                HttpResponseMessage responseMessage = await client.GetAsync(url, s_cts.Token);
+                HttpResponseMessage responseMessage = await client.Item1.GetAsync(url, s_cts.Token);
+
+                if (responseMessage.StatusCode == HttpStatusCode.Moved ||
+                    responseMessage.StatusCode == HttpStatusCode.MovedPermanently ||
+                    responseMessage.StatusCode == HttpStatusCode.Redirect)
+                {
+                    log.Warn("Got redirect, must be a bad proxy sending to retry. From [" + url + "] to [" + responseMessage.Headers.Location + "] with status code: " + responseMessage.StatusCode);
+                    throw new RetryableException("Got redirect");
+                }
 
                 string data = await responseMessage.Content.ReadAsStringAsync();
 
                 if (!data.Contains(@"<html lang=""en"">"))
                 {
                     log.Error("Did not get english html for url: " + url);
-                    throw new RetryableException("Invalid html response");    
+                    throw new RetryableException("Invalid html response");
                 }
-                
+
                 if (IsRedirect(data))
                 {
                     log.Warn("Got front page, maybe the proxy did not work?");
                     throw new RetryableException("Got front page");
                 }
-                
+
                 storageService.SetHtmlCache(url, data);
                 return new DownloadResponse()
                 {
@@ -141,6 +151,11 @@ namespace AudibleDownloader
                 };
             }
             catch (TaskCanceledException e)
+            {
+                log.Warn("HTTP request timed out for url: " + url);
+                throw new RetryableException();
+            }
+            catch (RetryableException e)
             {
                 throw e;
             }
@@ -154,10 +169,10 @@ namespace AudibleDownloader
         public async Task DownloadImage(string imageUrl, string asin)
         {
             log.Debug("Downloading image for asin: " + asin);
-            HttpClient client = GetClient();
+            Tuple<HttpClient, ProxyWrapper> client = GetClient();
             CancellationTokenSource s_cts = new CancellationTokenSource();
             s_cts.CancelAfter(new TimeSpan(0, 0, 30));
-            var fileBytes = await client.GetByteArrayAsync(new Uri(imageUrl), s_cts.Token);
+            var fileBytes = await client.Item1.GetByteArrayAsync(new Uri(imageUrl), s_cts.Token);
             await storageService.SaveImage(asin, fileBytes);
         }
 

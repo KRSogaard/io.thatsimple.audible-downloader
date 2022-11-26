@@ -78,6 +78,7 @@ namespace AudibleDownloader.Services.dal
                 return existingTag;
             }
 
+            log.Info("Creating new tag {0}", tag);
             long time = DateTimeOffset.Now.ToUnixTimeSeconds();
             return await MSU.QueryWithCommand("INSERT INTO `tags` (`tag`, `created`) VALUES (@tag, @created)",
                 new Dictionary<string, object>()

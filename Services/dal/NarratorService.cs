@@ -17,7 +17,7 @@ namespace AudibleDownloader.Services.dal
         public Task<List<AudibleNarrator>> getNarratorsForBook(int bookId)
         {
             log.Debug("Getting all narrators for book {0}", bookId);
-            return MSU.Query("SELECT n.* FROM `narrators` AS n LEFT JOIN `narrators_books` AS nb ON nb.narrator_id = n.id WHERE nb.book_id = ", new Dictionary<string, object> { { "@bookId", bookId } }, async (reader) =>
+            return MSU.Query("SELECT n.* FROM `narrators` AS n LEFT JOIN `narrators_books` AS nb ON nb.narrator_id = n.id WHERE nb.book_id = @bookId", new Dictionary<string, object> { { "@bookId", bookId } }, async (reader) =>
             {
                 List<AudibleNarrator> narrators = new List<AudibleNarrator>();
 
@@ -76,6 +76,7 @@ namespace AudibleDownloader.Services.dal
                 return check;
             }
 
+            log.Info("Saving new narrator {0}", narrator);
             long time = DateTimeOffset.Now.ToUnixTimeSeconds();
             return await MSU.QueryWithCommand("INSERT INTO `narrators` (`name`, `created`) VALUES (@name, @created)",
                 new Dictionary<string, object>

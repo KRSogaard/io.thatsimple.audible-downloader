@@ -55,5 +55,18 @@ namespace AudibleDownloader.Utils
                 }
             }
         }
+
+        public static string? GetStringOrNull(MySqlDataReader reader, string key)
+        {
+            return reader.IsDBNull(reader.GetOrdinal(key)) ? null : reader.GetString(key);
+        }
+        public static int? GetInt32OrNull(MySqlDataReader reader, string key)
+        {
+            return reader.IsDBNull(reader.GetOrdinal(key)) ? null : reader.GetInt32(key);
+        }
+        public static long? GetInt64OrNull(MySqlDataReader reader, string key)
+        {
+            return reader.IsDBNull(reader.GetOrdinal(key)) ? null : reader.GetInt64(key);
+        }
     }
 }

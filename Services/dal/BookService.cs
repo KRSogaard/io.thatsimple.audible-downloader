@@ -29,7 +29,7 @@ namespace AudibleDownloader.Services.dal
                 {
                     if (reader != null && await reader.ReadAsync())
                     {
-                        return await ParseBookResult(reader);
+                        return await ParseBookResult(reader, true);
                     }
                     return null;
                 });
@@ -42,7 +42,7 @@ namespace AudibleDownloader.Services.dal
                 {
                     if (reader != null && await reader.ReadAsync())
                     {
-                        return await ParseBookResult(reader);
+                        return await ParseBookResult(reader, true);
                     }
                     return null;
                 });
@@ -58,26 +58,27 @@ namespace AudibleDownloader.Services.dal
                 series = await getSimpleSeriesForBook(bookId);
             }
 
-            var authors = authorService.getAuthorsForBook(bookId);
-            var tags = tagService.GetTagsForBook(bookId);
-            var narrators = narratorService.getNarratorsForBook(bookId);
-            var categories = categoryService.getCategoriesForBook(bookId);
+            var authors = await authorService.getAuthorsForBook(bookId);
+            var tags = await tagService.GetTagsForBook(bookId);
+            var narrators = await narratorService.getNarratorsForBook(bookId);
+            var categories = await categoryService.getCategoriesForBook(bookId);
 
             return new AudibleBook
             {
                 Id = bookId,
                 Asin = reader.GetString("asin"),
                 Link = reader.GetString("link"),
-                Title = reader.GetString("title"),
-                Length = reader.GetInt32("length"),
-                Released = reader.GetInt32("released"),
-                Summary = reader.GetString("summary"),
-                LastUpdated = reader.GetInt32("lastUpdated"),
+                Title = MSU.GetStringOrNull(reader, "title"),
+                Length = MSU.GetInt32OrNull(reader, "length"),
+                Released = MSU.GetInt64OrNull(reader, "released"),
+                Summary = MSU.GetStringOrNull(reader, "summary"),
+                LastUpdated = MSU.GetInt64OrNull(reader, "last_updated"),
                 Series = series,
-                Authors = await authors,
-                Tags = await tags,
-                Narrators = await narrators,
-                Categories = await categories
+                Authors =  authors,
+                Tags = tags,
+                Narrators = narrators,
+                Categories = categories,
+                ShouldDownload = MSU.GetInt32OrNull(reader, "should_download") == 1
             };
         }
 
@@ -95,9 +96,9 @@ namespace AudibleDownloader.Services.dal
                         {
                             Id = reader.GetInt32("id"),
                             Asin = reader.GetString("asin"),
-                            Link = reader.GetString("link"),
+                            Link =reader.GetString("link"),
                             Name = reader.GetString("name"),
-                            BookNumber = reader.GetString("book_number")
+                            BookNumber = MSU.GetStringOrNull(reader, "book_number")
                         });
                     }
                     return series;
@@ -112,9 +113,9 @@ namespace AudibleDownloader.Services.dal
             
             if (checkBook != null)
             {
-                log.Info("Book {0} already exists updating", title);
-                await MSU.Execute("UPDATE `books` SET `link` = @link, `title` = @title, `length` = @length, `released` = @released, `summary` = @summary, `last_updated` = @lastUpdated WHERE `asin` = @asin",
-                    new Dictionary<string, object> { { "@link", link }, { "@title", title }, { "@length", runtime }, { "@released", released }, { "@summary", summary }, { "@asin", asin } });
+                log.Debug("Book {0} already exists updating", title);
+                await MSU.Execute("UPDATE `books` SET `link` = @link, `title` = @title, `length` = @length, `released` = @released, `summary` = @summary, `last_updated` = @lastUpdated, `should_download` = @shouldDownload WHERE `asin` = @asin",
+                    new Dictionary<string, object> { { "@link", link }, { "@title", title }, { "@length", runtime }, { "@released", released }, { "@summary", summary }, { "@lastUpdated", (int)DateTimeOffset.Now.ToUnixTimeSeconds() }, { "@asin", asin }, { "@shouldDownload", false} });
                 bookId = checkBook.Id;
             } else
             {
@@ -134,16 +135,28 @@ namespace AudibleDownloader.Services.dal
             return await getBook(bookId);
         }
         
-        public Task<int> CreateTempBook(string asin, string link)
+        public Task<int> CreateTempBook(string asin, string link, string? title)
         {
+            if (String.IsNullOrWhiteSpace(title))
+            {
+                title = null;
+            }
+            
             log.Trace("Creating temp book with asin {0} and link {1}", asin, link);
-            return MSU.QueryWithCommand("INSERT INTO `books` (`asin`, `link`, `created`, `last_updated`) VALUES (@asin, @link, @created, @created)",
-                new Dictionary<string, object> { { "@asin", asin }, { "@link", link }, { "@created", (int)DateTimeOffset.Now.ToUnixTimeSeconds() } },
+            return MSU.QueryWithCommand("INSERT INTO `books` (`asin`, `title`, `link`, `created`, `last_updated`, `should_download`) VALUES (@asin, @title, @link, @created, @created, @shouldDownload)",
+                new Dictionary<string, object>
+                {
+                    { "@asin", asin }, 
+                    { "@title", title }, 
+                    { "@link", link }, 
+                    { "@created", (int)DateTimeOffset.Now.ToUnixTimeSeconds() },
+                    { "@shouldDownload", true }
+                },
                 async (reader, cmd) =>
                 {
                     return (int)cmd.LastInsertedId;
                 }
-                );
+            );
         }
     }
 }
