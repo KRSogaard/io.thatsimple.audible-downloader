@@ -1,44 +1,35 @@
-using System.IO;
 using Microsoft.Extensions.Configuration;
 using NLog;
 
-namespace AudibleDownloader
+namespace AudibleDownloader;
+
+public static class Config
 {
-    public static class Config
+    private static readonly IConfiguration configuration;
+
+    private static readonly Logger log = LogManager.GetCurrentClassLogger();
+
+    static Config()
     {
-        private static IConfiguration configuration;
+        var builder =
+            new ConfigurationBuilder()
+                .SetBasePath(Directory.GetCurrentDirectory())
+                .AddJsonFile("appSettings.json",
+                    true,
+                    true)
+                .AddEnvironmentVariables();
+        configuration = builder.Build();
+    }
 
-        private static Logger log = LogManager.GetCurrentClassLogger();
+    public static string? Get(string name)
+    {
+        var appSettings = configuration[name];
+        if (appSettings == null) log.Warn($"Config {name} is missing");
+        return appSettings;
+    }
 
-        static Config()
-        {
-            var builder =
-                new ConfigurationBuilder()
-                    .SetBasePath(Directory.GetCurrentDirectory())
-                    .AddJsonFile("appSettings.json",
-                    optional: true,
-                    reloadOnChange: true);
-            
-                // .AddJsonFile("appSettings.Development.json",
-                // optional: true,
-                // reloadOnChange: true)
-            configuration = builder.Build(); 
-            Console.WriteLine("Hi");
-        }
-
-        public static string? Get(string name)
-        {
-            string? appSettings = configuration[name];
-            if (appSettings == null)
-            {
-                log.Warn($"Config {name} is missing");
-            }
-            return appSettings;
-        }
-
-        public static IConfigurationSection GetSection(string name)
-        {
-            return configuration.GetSection(name);
-        }
+    public static IConfigurationSection GetSection(string name)
+    {
+        return configuration.GetSection(name);
     }
 }

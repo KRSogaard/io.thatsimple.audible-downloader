@@ -1,142 +1,91 @@
-﻿using System.Text.Json;
-using System.Text.Json.Serialization;
+﻿using System.Text.Json.Serialization;
 
-namespace AudibleDownloader.Parser
+namespace AudibleDownloader.Parser;
+
+public class ParseAudioBook
 {
+    [JsonPropertyName("title")] public string Title { get; set; }
 
-    public class ParseAudioBook
-    {
+    [JsonPropertyName("asin")] public string Asin { get; set; }
 
-        [JsonPropertyName("title")]
-        public string Title;
+    [JsonPropertyName("released")] public long Released { get; set; }
 
-        [JsonPropertyName("asin")]
-        public string Asin;
+    [JsonPropertyName("link")] public string Link { get; set; }
 
-        [JsonPropertyName("released")]
-        public long Released;
+    [JsonPropertyName("image")] public string Image { get; set; }
 
-        [JsonPropertyName("link")]
-        public string Link;
+    [JsonPropertyName("subtitle")] public string Subtitle { get; set; }
 
-        [JsonPropertyName("image")]
-        public string Image;
+    [JsonPropertyName("authors")] public List<ParseAudioBookPerson> Authors { get; set; }
 
-        [JsonPropertyName("subtitle")]
-        public string Subtitle;
+    [JsonPropertyName("narrators")] public List<string> Narrators { get; set; }
 
-        [JsonPropertyName("authors")]
-        public List<ParseAudioBookPerson> Authors;
+    [JsonPropertyName("runtime")] public int Runtime { get; set; }
 
-        [JsonPropertyName("narrators")]
-        public List<string> Narrators;
+    [JsonPropertyName("summary")] public string Summary { get; set; }
 
-        [JsonPropertyName("runtime")]
-        public int Runtime;
+    [JsonPropertyName("series")] public List<ParseAudioBookSeries> Series { get; set; }
 
-        [JsonPropertyName("summary")]
-        public string Summary;
-        
-        [JsonPropertyName("series")]
-        public List<ParseAudioBookSeries> Series;
+    [JsonPropertyName("categories")] public List<ParseAudioBookCategory> Categories { get; set; }
 
-        [JsonPropertyName("categories")]
-        public List<ParseAudioBookCategory> Categories;
+    [JsonPropertyName("tags")] public List<string> Tags { get; set; }
+}
 
-        [JsonPropertyName("tags")]
-        public List<string> Tags;
+public class ParseAudioBookPerson
+{
+    [JsonPropertyName("name")] public string Name { get; set; }
 
-    }
+    [JsonPropertyName("link")] public string Link { get; set; }
 
-    public class ParseAudioBookPerson
-    {
+    [JsonPropertyName("asin")] public string Asin { get; set; }
+}
 
-        [JsonPropertyName("name")]
-        public string Name;
+public class ParseAudioBookSeries
+{
+    [JsonPropertyName("name")] public string Name { get; set; }
 
-        [JsonPropertyName("link")]
-        public string Link;
+    [JsonPropertyName("link")] public string Link { get; set; }
 
-        [JsonPropertyName("asin")]
-        public string Asin;
+    [JsonPropertyName("asin")] public string Asin { get; set; }
 
-    }
+    [JsonPropertyName("bookNumber")] public string? BookNumber { get; set; }
 
-    public class ParseAudioBookSeries
-    {
+    [JsonPropertyName("summary")] public string? Summary { get; set; }
+}
 
-        [JsonPropertyName("name")]
-        public string Name;
+public class ParseAudioBookCategory
+{
+    [JsonPropertyName("name")] public string Name { get; set; }
 
-        [JsonPropertyName("link")]
-        public string Link;
+    [JsonPropertyName("link")] public string Link { get; set; }
 
-        [JsonPropertyName("asin")]
-        public string Asin;
+    [JsonPropertyName("id")] public string Id { get; set; }
+}
 
-        [JsonPropertyName("bookNumber")]
-        public string? BookNumber;
+public class ParseSeries
+{
+    [JsonPropertyName("name")] public string Name { get; set; }
 
-        [JsonPropertyName("summary")]
-        public string? Summary;
+    [JsonPropertyName("summary")] public string Summary { get; set; }
 
-    }
-    
-    public class ParseAudioBookCategory
-    {
+    [JsonPropertyName("link")] public string Link { get; set; }
 
-        [JsonPropertyName("name")]
-        public string Name;
+    [JsonPropertyName("asin")] public string Asin { get; set; }
 
-        [JsonPropertyName("link")]
-        public string Link;
+    [JsonPropertyName("books")] public List<ParseSeriesBook> Books { get; set; }
+}
 
-        [JsonPropertyName("id")]
-        public string Id;
+public class ParseSeriesBook
+{
+    [JsonPropertyName("bookNumber")] public string BookNumber { get; set; }
 
-    }
+    [JsonPropertyName("title")] public string Title { get; set; }
 
-    public class ParseSeries
-    {
+    [JsonPropertyName("asin")] public string Asin { get; set; }
 
-        [JsonPropertyName("name")]
-        public string Name;
+    [JsonPropertyName("link")] public string Link { get; set; }
 
-        [JsonPropertyName("summary")]
-        public string Summary;
+    [JsonPropertyName("releaseDate")] public long? ReleaseDate { get; set; }
 
-        [JsonPropertyName("link")]
-        public string Link;
-
-        [JsonPropertyName("asin")]
-        public string Asin;
-
-        [JsonPropertyName("books")]
-        public List<ParseSeriesBook> Books;
-
-    }
-
-    public class ParseSeriesBook
-    {
-
-        [JsonPropertyName("bookNumber")]
-        public string BookNumber;
-
-        [JsonPropertyName("title")]
-        public string Title;
-
-        [JsonPropertyName("asin")]
-        public string Asin;
-
-        [JsonPropertyName("link")]
-        public string Link;
-
-        [JsonPropertyName("releaseDate")]
-        public long ReleaseDate;
-
-        [JsonPropertyName("lengthSeconds")]
-        public int LengthSeconds;
-
-    }
-
+    [JsonPropertyName("lengthSeconds")] public int? LengthSeconds { get; set; }
 }

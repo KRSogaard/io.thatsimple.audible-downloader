@@ -1,0 +1,24 @@
+version: "3"
+services:
+  downloader:
+    build:
+      dockerfile: Dockerfile
+    command: npm run dev
+    volumes:
+      - ./logs:/App/logs
+    environment:
+      LISTENER_THREADS: 1
+      MINIO_END_POINT: 192.168.10.41
+      MINIO_PORT: 9000
+      MINIO_ACCESS_KEY: kasper
+      MINIO_SECRET_KEY: U932Pni0GBZI
+      DB_HOST: 192.168.10.40
+      DB_PORT: 3306
+      DB_USER: audible
+      DB_PASSWORD: Zw35X9rcaK8X
+      DB_NAME: audible
+      RABBITMQ_HOST: 192.168.10.42
+      RABBITMQ_USER: kasper
+      RABBITMQ_PASS: L2kqN6FnUsLV
+      RABBITMQ_AUDIBLE_CHANNEL: audible
+      PROXY_LIST_URL: https://proxy.webshare.io/api/v2/proxy/list/download/ormaynpfoxcqjazwzyeslycobfurtyvvwfkwkcmh/-/any/sourceip/direct/-/
