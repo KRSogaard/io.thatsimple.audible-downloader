@@ -95,7 +95,7 @@ public class SeriesService
             {
                 log.Debug("Updating summary for series {0} summary", name);
                 await MSU.Execute(
-                    "UPDATE `series` SET `summary` = @summary, @lastUpdated = @lastUpdated, `should_download` = @shouldDownload WHERE `id` = @seriesId",
+                    "UPDATE `series` SET `summary` = @summary, `last_updated` = @lastUpdated, `should_download` = @shouldDownload WHERE `id` = @seriesId",
                     new Dictionary<string, object>
                     {
                         { "@summary", summary },

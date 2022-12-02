@@ -1,6 +1,7 @@
 ﻿using System.Text;
 using System.Text.Json.Nodes;
 using AudibleDownloader.Exceptions;
+using AudibleDownloader.Parser;
 using AudibleDownloader.Queue;
 using AudibleDownloader.Services;
 using AudibleDownloader.Services.dal;
@@ -26,6 +27,7 @@ internal class Listener
     private readonly StorageService storageService;
     private readonly TagService tagService;
     private readonly UserService userService;
+    private readonly AudibleDataGetter audibleDataGetter;
 
     public Listener()
     {
@@ -61,11 +63,12 @@ internal class Listener
         downloadQueue = new DownloadQueue();
         bookService = new BookService(authorService, narratorService, categoryService, tagService);
         downloadService = new DownloadService(storageService);
+        audibleDataGetter = new AudibleAPIDataGetter(downloadService);
 
         audibleDownloader = new AudibleDownloadManager(
             bookService, authorService, narratorService,
             categoryService, tagService, seriesService, userService,
-            storageService, downloadService, downloadQueue);
+            storageService, downloadService, downloadQueue, audibleDataGetter);
     }
 
     public static void Main(string[] args)
@@ -201,10 +204,10 @@ internal class Listener
             throw new FatalException("Failed to parse message");
         }
 
-        var url = jsonObject["url"]?.ToString().Split('?')[0];
-        if (url == null)
+        var asin = jsonObject["asin"].ToString().Trim();
+        if (asin == null)
         {
-            log.Error("Failed to parse message \"{0}\" missing url", message);
+            log.Error("Failed to parse message \"{0}\" missing asin", message);
             throw new FatalException("Failed to parse message");
         }
 
@@ -213,10 +216,10 @@ internal class Listener
             switch (type.Trim())
             {
                 case "book":
-                    await audibleDownloader.DownloadBook(url, userId, addTouser, force);
+                    await audibleDownloader.DownloadBook(asin, userId, addTouser, force);
                     break;
                 case "series":
-                    await audibleDownloader.DownloadSeries(url, userId, force);
+                    await audibleDownloader.DownloadSeries(asin, userId, force);
                     break;
                 default:
                     log.Error("Unknown message type \"{0}\"", type);

@@ -20,7 +20,7 @@ public class ParseAudioBook
 
     [JsonPropertyName("narrators")] public List<string> Narrators { get; set; }
 
-    [JsonPropertyName("runtime")] public int Runtime { get; set; }
+    [JsonPropertyName("runtime")] public int RuntimeSeconds { get; set; }
 
     [JsonPropertyName("summary")] public string Summary { get; set; }
 

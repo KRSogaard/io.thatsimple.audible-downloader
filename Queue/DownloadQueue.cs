@@ -26,13 +26,13 @@ public class DownloadQueue
         };
     }
 
-    public Task SendDownloadSeries(string link, int? jobId, string? userId, bool force = false)
+    public Task SendDownloadSeries(string asin, int? jobId, string? userId, bool force = false)
     {
         return GetChannel(async (channel, channelName) =>
         {
             var message = JsonSerializer.Serialize(new MessageData
             {
-                Url = link,
+                Asin = asin,
                 Type = "series",
                 JobId = jobId,
                 UserId = userId,
@@ -48,13 +48,13 @@ public class DownloadQueue
         });
     }
 
-    public Task SendDownloadBook(string link, int? jobId, string? userId, bool addToUser = false, bool force = false)
+    public Task SendDownloadBook(string asin, int? jobId, string? userId, bool addToUser = false, bool force = false)
     {
         return GetChannel(async (channel, channelName) =>
         {
             var message = JsonSerializer.Serialize(new MessageData
             {
-                Url = link,
+                Asin = asin,
                 Type = "book",
                 JobId = jobId,
                 UserId = string.IsNullOrWhiteSpace(userId) ? null : userId,

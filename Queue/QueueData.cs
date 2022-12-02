@@ -4,25 +4,18 @@ namespace AudibleDownloader.Queue;
 
 public class SeriesData
 {
-    [JsonPropertyName("name")] public string Name { get; set; }
-
-    [JsonPropertyName("link")] public string Link { get; set; }
-
     [JsonPropertyName("asin")] public string Asin { get; set; }
 }
 
 public class BookData
 {
-    [JsonPropertyName("title")] public string Title { get; set; }
-
-    [JsonPropertyName("link")] public string Link { get; set; }
 
     [JsonPropertyName("asin")] public string Asin { get; set; }
 }
 
 public class MessageData
 {
-    [JsonPropertyName("url")] public string Url { get; set; }
+    [JsonPropertyName("asin")] public string Asin { get; set; }
 
     [JsonPropertyName("type")] public string Type { get; set; }
 

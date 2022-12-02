@@ -14,13 +14,14 @@ public class ProxyWrapper
 
 public class DownloadService
 {
+    private readonly Logger log = LogManager.GetCurrentClassLogger();
+    
     private static readonly TimeSpan RequestTimeOut = new(0, 0, 5);
     private static readonly int RefreshProxyTime = 1000 * 60 * 60;
     private static int BadProxyMinutes = 10;
     private static readonly int BadReportLimit = 3;
     private Dictionary<ProxyWrapper, List<DateTime>> badProxyCounter;
     private List<Tuple<HttpClient, ProxyWrapper>> clients;
-    private readonly Logger log = LogManager.GetCurrentClassLogger();
     private List<ProxyWrapper> proxies;
 
     private readonly object proxyLock = new();
@@ -168,10 +169,60 @@ public class DownloadService
         return userAgents[index];
     }
 
-    public async Task<DownloadResponse> DownloadHtml(string url)
+    public async Task<string> DownLoadJson(string url)
+    {
+        var cached = await storageService.GetStringCache(url);
+        if (cached != null)
+        {
+            log.Trace("Using cached html for url: " + url);
+            return cached;
+        }
+        var client = GetClient();
+        try
+        {
+            var s_cts = new CancellationTokenSource();
+            s_cts.CancelAfter(RequestTimeOut);
+            var response = await client.Item1.GetAsync(url, s_cts.Token);
+            if (response.StatusCode == HttpStatusCode.Forbidden)
+            {
+                ReportBadProxy(client.Item2);
+                throw new RetryableException("Proxy reported as bad");
+            }
+
+            if (response.StatusCode != HttpStatusCode.OK)
+            {
+                log.Error("Error getting url: " + url + " status code: " + response.StatusCode);
+                throw new RetryableException("Failed to get url");
+            }
+
+            var content = await response.Content.ReadAsStringAsync();
+            storageService.SetStringCache(url, content, "application/json");
+            return content;
+        }
+        catch (TaskCanceledException e)
+        {
+            log.Warn("HTTP request timed out for url: " + url);
+            ReportBadProxy(client.Item2);
+            throw new RetryableException();
+        }
+        catch (HttpRequestException e)
+        {
+            if (e.InnerException is SocketException)
+            {
+                log.Warn("Socket exception for url (" + url + ") with proxy [" + client.Item2.Host + ":" +
+                         client.Item2.Port + "]");
+                ReportBadProxy(client.Item2);
+                throw new RetryableException("Socket exception, bad proxy?");
+            }
+
+            throw e;
+        }
+    }
+
+    public async Task<DownloadResponse> DownloadHtml(string url, Func<HttpResponseMessage, bool> verifyRedirect = null)
     {
         log.Info("Request to download html from url: " + url);
-        var cached = await storageService.GetHtmlCache(url);
+        var cached = await storageService.GetStringCache(url);
         if (cached != null)
         {
             log.Trace("Using cached html for url: " + url);
@@ -193,6 +244,13 @@ public class DownloadService
                 responseMessage.StatusCode == HttpStatusCode.MovedPermanently ||
                 responseMessage.StatusCode == HttpStatusCode.Redirect)
             {
+                if (verifyRedirect != null && verifyRedirect(responseMessage))
+                {
+                    var redirectUrl = "https://www.audible.com" + responseMessage.Headers.Location.ToString();
+                    log.Info("Redirecting to: " + redirectUrl);
+                    return await DownloadHtml(redirectUrl);
+                }
+
                 log.Warn("Got redirect, must be a bad proxy sending to retry. From [" + url + "] to [" +
                          responseMessage.Headers.Location + "] with status code: " + responseMessage.StatusCode);
                 ReportBadProxy(client.Item2);
@@ -217,7 +275,7 @@ public class DownloadService
                 throw new RetryableException("Got front page");
             }
 
-            storageService.SetHtmlCache(url, data);
+            storageService.SetStringCache(url, data);
             return new DownloadResponse
             {
                 StatusCode = responseMessage.StatusCode,

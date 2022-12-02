@@ -139,18 +139,15 @@ public class BookService
         return await getBook(bookId);
     }
 
-    public Task<int> CreateTempBook(string asin, string link, string? title)
+    public Task<int> CreateTempBook(string asin)
     {
-        if (string.IsNullOrWhiteSpace(title)) title = null;
-
         log.Debug("Creating temp book with asin {0} and link {1}", asin, link);
         return MSU.QueryWithCommand(
-            "INSERT INTO `books` (`asin`, `title`, `link`, `created`, `last_updated`, `should_download`) VALUES (@asin, @title, @link, @created, @created, @shouldDownload)",
+            "INSERT INTO `books` (`asin`, `title`, `created`, `last_updated`, `should_download`) VALUES (@asin, @title, @created, @created, @shouldDownload)",
             new Dictionary<string, object>
             {
                 { "@asin", asin },
-                { "@title", title },
-                { "@link", link },
+                { "@title", "Pending" },
                 { "@created", (int)DateTimeOffset.Now.ToUnixTimeSeconds() },
                 { "@shouldDownload", true }
             },

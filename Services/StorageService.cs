@@ -1,5 +1,6 @@
 ﻿using System.Security.Cryptography;
 using System.Text;
+using AudibleDownloader.Utils;
 using Minio;
 using Minio.Exceptions;
 using NLog;
@@ -26,7 +27,7 @@ public class StorageService
     }
 
 
-    public async Task<string?> GetHtmlCache(string url)
+    public async Task<string?> GetStringCache(string url)
     {
         var fileName = UrlToHash(url);
 
@@ -48,13 +49,14 @@ public class StorageService
 
         return html;
     }
-
-    public async Task SetHtmlCache(string url, string html)
+    
+    public async Task SetStringCache(string url, string content, string contentType = "text/html")
     {
         var fileName = UrlToHash(url);
+        var stream = content.ToStream();
         await minioClient.PutObjectAsync(cacheBucketName, fileName,
-            new MemoryStream(Encoding.UTF8.GetBytes(html)),
-            html.Length, "text/html");
+            stream,
+            stream.Length, contentType);
     }
 
     public async Task<bool> HasImage(string asin)
@@ -75,7 +77,18 @@ public class StorageService
         if (url.Contains("audible.com/pd/"))
             // USE ASIN as the hash
             return "books-" + url.Split('?')[0].Split('/').Last() + ".html";
-        if (url.Contains("series/")) return "series-" + url.Split('?')[0].Split('/').Last() + ".html";
+        if (url.Contains("series/")) 
+            return "series-" + url.Split('?')[0].Split('/').Last() + ".html";
+        if (url.Contains("https://api.audible.com"))
+        {
+            using (var md5 = MD5.Create())
+            {
+                string groups = url.Split("response_groups=").Last();
+                var inputBytes = Encoding.ASCII.GetBytes(groups);
+                var hashBytes = Convert.ToHexString(md5.ComputeHash(inputBytes));
+                return "api-" + url.Split('?')[0].Split('/').Last() + "-" + hashBytes + ".json";
+            }
+        }
         using (var md5 = MD5.Create())
         {
             var inputBytes = Encoding.ASCII.GetBytes(url);

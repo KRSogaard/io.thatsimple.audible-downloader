@@ -173,7 +173,7 @@ public static class AudibleParser
             Authors = authors,
             Narrators = narrators,
             Released = released,
-            Runtime = runtimeSeconds,
+            RuntimeSeconds = runtimeSeconds,
             Summary = summary,
             Series = series,
             Categories = categories,
@@ -182,7 +182,7 @@ public static class AudibleParser
         };
     }
 
-    internal static async Task<ParseSeries> ParseSeries(string html)
+    public static async Task<ParseSeries> ParseSeries(string html)
     {
         var document = await context.OpenAsync(req => req.Content(html));
         var booksList = new List<ParseSeriesBook>();

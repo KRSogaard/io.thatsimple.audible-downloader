@@ -10,22 +10,24 @@ using NLog;
 namespace AudibleDownloader.Services;
 
 public class AudibleDownloadManager
-{
+{    
+    private readonly Logger log = LogManager.GetCurrentClassLogger();
+
     private readonly AuthorService authorService;
     private readonly BookService bookService;
     private readonly CategoryService categoryService;
-    private readonly DownloadQueue downloadQueue;
     private readonly DownloadService downloadService;
-    private readonly Logger log = LogManager.GetCurrentClassLogger();
+    private readonly DownloadQueue downloadQueue;
     private readonly NarratorService narratorService;
     private readonly SeriesService seriesService;
     private readonly StorageService storageService;
     private readonly TagService tagService;
     private readonly UserService userService;
+    private readonly AudibleDataGetter dataGetter;
 
     public AudibleDownloadManager(BookService bookService, AuthorService authorService, NarratorService narratorService,
         CategoryService categoryService, TagService tagService, SeriesService seriesService, UserService userService,
-        StorageService storageService, DownloadService downloadService, DownloadQueue downloadQueue)
+        StorageService storageService, DownloadService downloadService, DownloadQueue downloadQueue, AudibleDataGetter dataGetter)
     {
         this.bookService = bookService;
         this.authorService = authorService;
@@ -37,24 +39,24 @@ public class AudibleDownloadManager
         this.storageService = storageService;
         this.downloadService = downloadService;
         this.downloadQueue = downloadQueue;
+        this.dataGetter = dataGetter;
     }
 
-    public async Task DownloadBook(string url, string? userId = null, bool addToUser = false, bool force = false)
+    public async Task DownloadBook(string asin, string? userId = null, bool addToUser = false, bool force = false)
     {
-        log.Info("Request to download book from url {0}", url);
-        var bookASIN = ParseUtils.GetASINFromUrl(url);
-        if (bookASIN == null)
+        if (asin == null)
         {
-            log.Error("Failed to parse book ASIN from url {0}", url);
-            throw new FatalException("Failed to parse book ASIN from url");
+            log.Error("Failed to parse book missing ASIN", asin);
+            throw new FatalException("Failed to parse book missing ASIN");
         }
+        log.Info("Request to download book from asin {0}", asin);
 
         var bookId = 0;
-        var existingBook = await bookService.getBookASIN(bookASIN);
+        var existingBook = await bookService.getBookASIN(asin);
         var shouldDownload = await ShouldDownload(existingBook, force);
-        if (shouldDownload)
+        if (shouldDownload || existingBook == null)
         {
-            var newBookReponse = await DownloadAndCreateBook(url, userId);
+            var newBookReponse = await DownloadAndCreateBook(asin, userId);
             if (newBookReponse == null)
             {
                 log.Warn("Can not continue because the book could not be downloaded");
@@ -72,7 +74,7 @@ public class AudibleDownloadManager
             await userService.AddBookToUser(userId, bookId);
         else
             log.Debug("No user id provided, not adding book to user");
-        log.Debug("Finished downloading book " + url);
+        log.Debug("Finished downloading book " + asin);
     }
 
     public async Task DownloadSeries(string url, string? userId, bool force)
@@ -96,43 +98,8 @@ public class AudibleDownloadManager
             return;
         }
 
-        log.Info("Downloading series");
-        var downloadResponse = await downloadService.DownloadHtml(url);
-        if (downloadResponse == null || downloadResponse.StatusCode != HttpStatusCode.OK)
-        {
-            log.Warn("Failed to download series retrying after 1 sec: " + url);
-            await Task.Delay(1000);
-            downloadResponse = await downloadService.DownloadHtml(url);
-        }
-
-        if (downloadResponse != null && downloadResponse.StatusCode == HttpStatusCode.NotFound)
-        {
-            log.Error("Series no longer exists, skipping download: " + url);
-            return;
-        }
-
-        if (downloadResponse != null && downloadResponse.StatusCode == HttpStatusCode.InternalServerError)
-        {
-            log.Error("Download returned 500 error: " + url);
-            throw new RetryableException();
-        }
-
-        if (downloadResponse == null || downloadResponse.StatusCode != HttpStatusCode.OK)
-        {
-            log.Error("Failed to download series with unknown status code " + downloadResponse?.StatusCode + ": " +
-                      url);
-            return;
-        }
-
-        var html = downloadResponse.Data;
-        if (html == null || html.Length < 100)
-        {
-            log.Error("Failed to download book, HTML was empty: " + url);
-            throw new RetryableException();
-        }
-
         var start = DateTime.Now;
-        var parsedSeries = await AudibleParser.ParseSeries(html);
+        var parsedSeries = await dataGetter.ParseSeries(seriesAsin);
         log.Debug("Parsing series took: " + (DateTime.Now - start).TotalMilliseconds + " ms");
         storedSeries = await seriesService.SaveOrGetSeries(parsedSeries.Asin, parsedSeries.Name, parsedSeries.Link,
             parsedSeries.Summary);
@@ -144,7 +111,7 @@ public class AudibleDownloadManager
 
         foreach (var book in parsedSeries.Books)
         {
-            if (book.Link == null)
+            if (book.Asin == null)
             {
                 log.Warn("Book link was null, skipping book", JsonSerializer.Serialize(book));
                 continue;
@@ -154,11 +121,11 @@ public class AudibleDownloadManager
             if (savedBook == null)
             {
                 log.Debug("Book " + book.Asin + " not found in database, creating temp book");
-                var bookId = await bookService.CreateTempBook(book.Asin, book.Link, book.Title);
+                var bookId = await bookService.CreateTempBook(book.Asin);
                 await seriesService.AddBookToSeries(bookId, storedSeries.Id, book.BookNumber);
                 int? jobId = userId != null
                     ? await userService.CreateJob(userId, "book", JsonSerializer.Serialize(
-                        new BookData { Title = book.Title, Asin = book.Asin, Link = book.Link }))
+                        new BookData { Asin = book.Asin }))
                     : null;
                 await downloadQueue.SendDownloadBook(book.Link, jobId, userId);
             }
@@ -185,7 +152,7 @@ public class AudibleDownloadManager
         }
     }
 
-    private bool ShouldDownloadSeries(AudibleSeries storedSeries, bool force)
+    private bool ShouldDownloadSeries(AudibleSeries? storedSeries, bool force)
     {
         if (storedSeries == null)
         {
@@ -205,7 +172,7 @@ public class AudibleDownloadManager
             return true;
         }
 
-        if (storedSeries.Summary == null || storedSeries.Summary == "")
+        if (string.IsNullOrWhiteSpace(storedSeries.Summary))
         {
             log.Debug("Series should be downloaded because it has no summary");
             return true;
@@ -260,45 +227,47 @@ public class AudibleDownloadManager
         return false;
     }
 
-    private async Task<AudibleBook?> DownloadAndCreateBook(string url, string? userId)
+    private async Task<AudibleBook?> DownloadAndCreateBook(string asin, string? userId)
     {
-        log.Debug("Downloading and create book from URL: " + url);
-        var downloadResponse = await downloadService.DownloadHtml(url);
-        if (downloadResponse == null || downloadResponse.StatusCode != HttpStatusCode.OK)
-        {
-            log.Warn("Failed to download book retrying after 1 sec: " + url);
-            await Task.Delay(1000);
-            downloadResponse = await downloadService.DownloadHtml(url);
-        }
-
-        if (downloadResponse != null && downloadResponse.StatusCode == HttpStatusCode.NotFound)
-        {
-            log.Error("Book no longer exists, skipping download: " + url);
-            return null;
-        }
-
-        if (downloadResponse != null && downloadResponse.StatusCode == HttpStatusCode.InternalServerError)
-        {
-            log.Error("Download returned 500 error: " + url);
-            throw new RetryableException();
-        }
-
-        if (downloadResponse == null || downloadResponse.StatusCode != HttpStatusCode.OK)
-        {
-            log.Error("Failed to download book with unknown status code " + downloadResponse?.StatusCode + ": " + url);
-            return null;
-        }
-
-        var html = downloadResponse.Data;
-        if (html == null || html.Length < 100)
-        {
-            log.Error("Failed to download book, HTML was empty: " + url);
-            throw new RetryableException();
-        }
-
+        log.Debug("Downloading and create book from asin: " + asin);
+        // var downloadResponse = await downloadService.DownloadHtml(url);
+        // if (downloadResponse == null || downloadResponse.StatusCode != HttpStatusCode.OK)
+        // {
+        //     log.Warn("Failed to download book retrying after 1 sec: " + url);
+        //     await Task.Delay(1000);
+        //     downloadResponse = await downloadService.DownloadHtml(url);
+        // }
+        //
+        // if (downloadResponse != null && downloadResponse.StatusCode == HttpStatusCode.NotFound)
+        // {
+        //     log.Error("Book no longer exists, skipping download: " + url);
+        //     return null;
+        // }
+        //
+        // if (downloadResponse != null && downloadResponse.StatusCode == HttpStatusCode.InternalServerError)
+        // {
+        //     log.Error("Download returned 500 error: " + url);
+        //     throw new RetryableException();
+        // }
+        //
+        // if (downloadResponse == null || downloadResponse.StatusCode != HttpStatusCode.OK)
+        // {
+        //     log.Error("Failed to download book with unknown status code " + downloadResponse?.StatusCode + ": " + url);
+        //     return null;
+        // }
+        //
+        // var html = downloadResponse.Data;
+        // if (html == null || html.Length < 100)
+        // {
+        //     log.Error("Failed to download book, HTML was empty: " + url);
+        //     throw new RetryableException();
+        // }
+        //
+        // var start = DateTime.Now;
+        // var book = await AudibleParser.ParseBook(html);
         var start = DateTime.Now;
-        var book = await AudibleParser.ParseBook(html);
-        log.Debug("Parsing book took: " + (DateTime.Now - start).TotalMilliseconds + " ms");
+        var book = await dataGetter.ParseBook(asin);
+        log.Debug("Getting book data took: " + (DateTime.Now - start).TotalMilliseconds + " ms");
         if (book == null)
         {
             log.Debug("Was unable to parse the book from HTML");
@@ -307,7 +276,7 @@ public class AudibleDownloadManager
 
         start = DateTime.Now;
         var newBook =
-            await bookService.SaveBook(book.Asin, book.Link, book.Title, book.Runtime, book.Released, book.Summary);
+            await bookService.SaveBook(book.Asin, book.Link, book.Title, book.RuntimeSeconds, book.Released, book.Summary);
         log.Debug("Created or updated book with id: " + newBook.Id + " in " + (DateTime.Now - start).TotalMilliseconds +
                   " ms");
 
@@ -338,7 +307,7 @@ public class AudibleDownloadManager
                     int? jobId = userId != null
                         ? await userService.CreateJob(userId, "series",
                             JsonSerializer.Serialize(new SeriesData
-                                { Name = savedSeries.Name, Asin = savedSeries.Asin, Link = savedSeries.Link }))
+                                { Asin = savedSeries.Asin }))
                         : null;
                     await downloadQueue.SendDownloadSeries(savedSeries.Link, jobId, userId);
                 }
