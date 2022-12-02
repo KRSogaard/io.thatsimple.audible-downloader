@@ -1,8 +1,9 @@
 ﻿using AudibleDownloader.Utils;
 using MySql.Data.MySqlClient;
 using NLog;
+using AudibleDownloader.Models;
 
-namespace AudibleDownloader.Services.dal;
+namespace AudibleDownloader.DAL.Services;
 
 public class SeriesService
 {

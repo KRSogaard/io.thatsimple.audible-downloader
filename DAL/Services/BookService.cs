@@ -1,8 +1,9 @@
 ﻿using AudibleDownloader.Utils;
 using MySql.Data.MySqlClient;
 using NLog;
+using AudibleDownloader.Models;
 
-namespace AudibleDownloader.Services.dal;
+namespace AudibleDownloader.DAL.Services;
 
 public class BookService
 {
@@ -50,7 +51,7 @@ public class BookService
         var series = new List<SimpleSeries>();
         if (getSeries) series = await getSimpleSeriesForBook(bookId);
 
-        var authors = await authorService.getAuthorsForBook(bookId);
+        var authors = await authorService.GetAuthorsForBook(bookId);
         var tags = await tagService.GetTagsForBook(bookId);
         var narrators = await narratorService.getNarratorsForBook(bookId);
         var categories = await categoryService.getCategoriesForBook(bookId);
@@ -141,7 +142,7 @@ public class BookService
 
     public Task<int> CreateTempBook(string asin)
     {
-        log.Debug("Creating temp book with asin {0} and link {1}", asin, link);
+        log.Debug("Creating temp book with asin {0}", asin);
         return MSU.QueryWithCommand(
             "INSERT INTO `books` (`asin`, `title`, `created`, `last_updated`, `should_download`) VALUES (@asin, @title, @created, @created, @shouldDownload)",
             new Dictionary<string, object>

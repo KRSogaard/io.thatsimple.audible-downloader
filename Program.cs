@@ -1,10 +1,13 @@
 ﻿using System.Text;
 using System.Text.Json.Nodes;
+using AudibleDownloader.DAL;
+using AudibleDownloader.DAL.Services;
 using AudibleDownloader.Exceptions;
 using AudibleDownloader.Parser;
 using AudibleDownloader.Queue;
 using AudibleDownloader.Services;
-using AudibleDownloader.Services.dal;
+using Microsoft.EntityFrameworkCore.Internal;
+using Newtonsoft.Json;
 using NLog;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
@@ -52,7 +55,6 @@ internal class Listener
         if (!int.TryParse(Config.Get("LISTENER_THREADS"), out var threads))
             Precondition(false, "Config LISTENER_THREADS is not a number");
 
-
         authorService = new AuthorService();
         narratorService = new NarratorService();
         categoryService = new CategoryService();
@@ -73,6 +75,13 @@ internal class Listener
 
     public static void Main(string[] args)
     {
+        DateTime start = DateTime.Now;
+        // using (var context = new AudibleContext())
+        // {
+        //     context.Database.EnsureCreated();
+        // }
+        // Console.WriteLine($@"Ensure Created Took {(DateTime.Now - start).TotalMilliseconds} ms");
+        
         new Listener().Run().Wait();
     }
 
@@ -174,37 +183,27 @@ internal class Listener
 
     private async Task OnMessage(string message)
     {
-        JsonNode? jsonParse;
-
-        jsonParse = JsonNode.Parse(message);
-        if (jsonParse == null)
+        dynamic json = JsonConvert.DeserializeObject<dynamic>(message);
+        if (json == null)
         {
             log.Error("Failed to parse message \"{0}\"", message);
             throw new FatalException("Failed to parse message");
         }
 
-        var jsonObject = jsonParse.AsObject();
 
-
-        var userIdObj = jsonObject["userId"];
-        var addToUserObj = jsonObject["addToUser"];
-        var forceObj = jsonObject["force"];
-
-        var jobId = jsonObject["jobId"]?.ToString();
-        var userId = jsonObject["userId"]?.ToString();
-        var addTouser = false;
-        var force = false;
-        if (jsonObject["addToUser"] != null) addTouser = jsonObject["addToUser"]?.ToString().ToLower() == "true";
-        if (jsonObject["force"] != null) force = jsonObject["force"]?.ToString().ToLower() == "true";
-
-        var type = jsonObject["type"]?.ToString();
+        string? userId = json.userId;
+        bool addToUser = json.addToUser == true;
+        bool force = json.force == true;
+        string? jobId = json.jobId;
+        string type = ((string)json.type).Trim();
+        string asin = ((string)json.asin).Trim();
+        
         if (type == null)
         {
             log.Error("Failed to parse message \"{0}\" missing url", message);
             throw new FatalException("Failed to parse message");
         }
-
-        var asin = jsonObject["asin"].ToString().Trim();
+        
         if (asin == null)
         {
             log.Error("Failed to parse message \"{0}\" missing asin", message);
@@ -216,7 +215,7 @@ internal class Listener
             switch (type.Trim())
             {
                 case "book":
-                    await audibleDownloader.DownloadBook(asin, userId, addTouser, force);
+                    await audibleDownloader.DownloadBook(asin, userId, addToUser, force);
                     break;
                 case "series":
                     await audibleDownloader.DownloadSeries(asin, userId, force);

@@ -1,7 +1,8 @@
 ﻿using AudibleDownloader.Utils;
 using NLog;
+using AudibleDownloader.Models;
 
-namespace AudibleDownloader.Services.dal;
+namespace AudibleDownloader.DAL.Services;
 
 public class CategoryService
 {

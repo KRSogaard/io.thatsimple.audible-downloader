@@ -1,5 +1,6 @@
 ﻿using System.Dynamic;
 using System.Text;
+using System.Text.Json;
 using Newtonsoft.Json;
 using AudibleDownloader.Services;
 using AudibleDownloader.Utils;

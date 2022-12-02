@@ -1,10 +1,11 @@
 using System.Net;
 using System.Text.Json;
+using AudibleDownloader.DAL.Services;
 using AudibleDownloader.Exceptions;
+using AudibleDownloader.Models;
 using AudibleDownloader.Parser;
 using AudibleDownloader.Queue;
 using AudibleDownloader.Services;
-using AudibleDownloader.Services.dal;
 using NLog;
 
 namespace AudibleDownloader.Services;
@@ -230,41 +231,7 @@ public class AudibleDownloadManager
     private async Task<AudibleBook?> DownloadAndCreateBook(string asin, string? userId)
     {
         log.Debug("Downloading and create book from asin: " + asin);
-        // var downloadResponse = await downloadService.DownloadHtml(url);
-        // if (downloadResponse == null || downloadResponse.StatusCode != HttpStatusCode.OK)
-        // {
-        //     log.Warn("Failed to download book retrying after 1 sec: " + url);
-        //     await Task.Delay(1000);
-        //     downloadResponse = await downloadService.DownloadHtml(url);
-        // }
-        //
-        // if (downloadResponse != null && downloadResponse.StatusCode == HttpStatusCode.NotFound)
-        // {
-        //     log.Error("Book no longer exists, skipping download: " + url);
-        //     return null;
-        // }
-        //
-        // if (downloadResponse != null && downloadResponse.StatusCode == HttpStatusCode.InternalServerError)
-        // {
-        //     log.Error("Download returned 500 error: " + url);
-        //     throw new RetryableException();
-        // }
-        //
-        // if (downloadResponse == null || downloadResponse.StatusCode != HttpStatusCode.OK)
-        // {
-        //     log.Error("Failed to download book with unknown status code " + downloadResponse?.StatusCode + ": " + url);
-        //     return null;
-        // }
-        //
-        // var html = downloadResponse.Data;
-        // if (html == null || html.Length < 100)
-        // {
-        //     log.Error("Failed to download book, HTML was empty: " + url);
-        //     throw new RetryableException();
-        // }
-        //
-        // var start = DateTime.Now;
-        // var book = await AudibleParser.ParseBook(html);
+        
         var start = DateTime.Now;
         var book = await dataGetter.ParseBook(asin);
         log.Debug("Getting book data took: " + (DateTime.Now - start).TotalMilliseconds + " ms");

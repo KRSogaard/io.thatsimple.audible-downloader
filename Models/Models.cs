@@ -1,6 +1,6 @@
 ﻿using System.Text.Json.Serialization;
 
-namespace AudibleDownloader.Services.dal;
+namespace AudibleDownloader.Models;
 
 public class BulkAudibleBook
 {
@@ -88,11 +88,12 @@ public class AudibleAuthor
 
     [JsonPropertyName("asin")] public string Asin { get; set; }
 
-    [JsonPropertyName("link")] public string Link { get; set; }
+    [JsonPropertyName("link")] public string? Link { get; set; }
 
-    [JsonPropertyName("name")] public string Name { get; set; }
+    [JsonPropertyName("name")] public string? Name { get; set; }
 
-    [JsonPropertyName("created")] public long Created { get; set; }
+    [JsonPropertyName("created")] public long? Created { get; set; }
+    
 }
 
 public class AudibleNarrator
