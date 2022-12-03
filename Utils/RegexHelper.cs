@@ -5,14 +5,12 @@ namespace AudibleDownloader.Utils;
 /// <summary>
 ///     Regex helper class
 /// </summary>
-public static class RegexHelper
-{
-    public static bool Validate(string pattern, string source)
-    {
-        var re = new Regex(pattern,
-            RegexOptions.IgnoreCase | RegexOptions.IgnorePatternWhitespace | RegexOptions.Multiline |
-            RegexOptions.Singleline);
-        var m = re.Match(source);
+public static class RegexHelper {
+    public static bool Validate(string pattern, string source) {
+        Regex re = new Regex(pattern,
+                             RegexOptions.IgnoreCase | RegexOptions.IgnorePatternWhitespace | RegexOptions.Multiline |
+                             RegexOptions.Singleline);
+        Match m = re.Match(source);
         return m.Success;
     }
 
@@ -20,16 +18,15 @@ public static class RegexHelper
     ///     Return the first result of the regex
     ///     Will return null if no match.
     /// </summary>
-    public static string Match(string pattern, string source)
-    {
+    public static string Match(string pattern, string source) {
         if (string.IsNullOrWhiteSpace(pattern) ||
             string.IsNullOrWhiteSpace(source))
             return null;
 
-        var re = new Regex(pattern,
-            RegexOptions.IgnoreCase | RegexOptions.IgnorePatternWhitespace | RegexOptions.Multiline |
-            RegexOptions.Singleline);
-        var m = re.Match(source);
+        Regex re = new Regex(pattern,
+                             RegexOptions.IgnoreCase | RegexOptions.IgnorePatternWhitespace | RegexOptions.Multiline |
+                             RegexOptions.Singleline);
+        Match m = re.Match(source);
         if (m.Groups.Count == 0)
             return null;
 
@@ -40,21 +37,20 @@ public static class RegexHelper
     ///     Return the fist match of very good.
     ///     Good to fine one thing multible times
     /// </summary>
-    public static List<string> MatchAll(string pattern, string source)
-    {
+    public static List<string> MatchAll(string pattern, string source) {
         if (string.IsNullOrWhiteSpace(pattern) ||
             string.IsNullOrWhiteSpace(source))
             return new List<string>();
 
-        var re = new Regex(pattern,
-            RegexOptions.IgnoreCase | RegexOptions.IgnorePatternWhitespace | RegexOptions.Multiline |
-            RegexOptions.Singleline);
-        var mc = re.Matches(source);
+        Regex re = new Regex(pattern,
+                             RegexOptions.IgnoreCase | RegexOptions.IgnorePatternWhitespace | RegexOptions.Multiline |
+                             RegexOptions.Singleline);
+        MatchCollection mc = re.Matches(source);
 
-        var results = new List<string>();
+        List<string> results = new List<string>();
         foreach (Match m in mc)
             if (m.Groups.Count > 1)
-                foreach (var c in m.Groups[1].Captures)
+                foreach (object? c in m.Groups[1].Captures)
                     results.Add(c.ToString());
         return results;
     }
@@ -62,22 +58,20 @@ public static class RegexHelper
     /// <summary>
     ///     Find all groups
     /// </summary>
-    public static List<List<string>> MatchAllGroups(string pattern, string source)
-    {
+    public static List<List<string>> MatchAllGroups(string pattern, string source) {
         if (string.IsNullOrWhiteSpace(pattern) ||
             string.IsNullOrWhiteSpace(source))
             return new List<List<string>>();
 
-        var re = new Regex(pattern,
-            RegexOptions.IgnoreCase | RegexOptions.IgnorePatternWhitespace | RegexOptions.Multiline |
-            RegexOptions.Singleline);
-        var mc = re.Matches(source);
+        Regex re = new Regex(pattern,
+                             RegexOptions.IgnoreCase | RegexOptions.IgnorePatternWhitespace | RegexOptions.Multiline |
+                             RegexOptions.Singleline);
+        MatchCollection mc = re.Matches(source);
 
-        var results = new List<List<string>>();
-        foreach (Match m in mc)
-        {
-            var innerList = new List<string>();
-            for (var g = 1; g < m.Groups.Count; g++) innerList.Add(m.Groups[g].Value);
+        List<List<string>> results = new List<List<string>>();
+        foreach (Match m in mc) {
+            List<string> innerList = new List<string>();
+            for (int g = 1; g < m.Groups.Count; g++) innerList.Add(m.Groups[g].Value);
             results.Add(innerList);
         }
 
@@ -87,18 +81,16 @@ public static class RegexHelper
     /// <summary>
     ///     Remove all HTML tags from a string
     /// </summary>
-    public static string RemoveHtmlTags(string soruce)
-    {
+    public static string RemoveHtmlTags(string soruce) {
         return Regex.Replace(soruce, "<.*?>", string.Empty);
     }
 
     /// <summary>
     ///     Regex replace
     /// </summary>
-    public static string Replace(string pattern, string replacePattern, string str)
-    {
+    public static string Replace(string pattern, string replacePattern, string str) {
         return Regex.Replace(str, pattern, replacePattern,
-            RegexOptions.IgnoreCase | RegexOptions.IgnorePatternWhitespace | RegexOptions.Multiline |
-            RegexOptions.Singleline);
+                             RegexOptions.IgnoreCase | RegexOptions.IgnorePatternWhitespace | RegexOptions.Multiline |
+                             RegexOptions.Singleline);
     }
 }

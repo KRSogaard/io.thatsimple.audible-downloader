@@ -1,7 +1,6 @@
 ﻿namespace AudibleDownloader.DAL.Models;
 
-public partial class UsersBook
-{
+public class UsersBook {
     public int Id { get; set; }
 
     public int UserId { get; set; }

@@ -1,12 +1,11 @@
 ﻿using System.Text;
-using System.Text.Json.Nodes;
 using AudibleDownloader.DAL;
 using AudibleDownloader.DAL.Services;
 using AudibleDownloader.Exceptions;
+using AudibleDownloader.Models;
 using AudibleDownloader.Parser;
 using AudibleDownloader.Queue;
 using AudibleDownloader.Services;
-using Microsoft.EntityFrameworkCore.Internal;
 using Newtonsoft.Json;
 using NLog;
 using RabbitMQ.Client;
@@ -14,11 +13,11 @@ using RabbitMQ.Client.Events;
 
 namespace AudibleDownloader;
 
-internal class Listener
-{
+internal class Listener {
     private static readonly TimeSpan RefreshTimerSeconds = TimeSpan.FromMinutes(60);
     private static readonly int MinProcessingTimeMs = 1000;
-    
+    private readonly AudibleDataGetter audibleDataGetter;
+
     private readonly AudibleDownloadManager audibleDownloader;
     private readonly AuthorService authorService;
     private readonly BookService bookService;
@@ -27,16 +26,14 @@ internal class Listener
     private readonly DownloadService downloadService;
     private readonly Logger log = LogManager.GetCurrentClassLogger();
     private readonly NarratorService narratorService;
+    private readonly PublisherService publisherService;
     private readonly SeriesService seriesService;
     private readonly bool shutDown = false;
     private readonly StorageService storageService;
     private readonly TagService tagService;
     private readonly UserService userService;
-    private readonly PublisherService publisherService;
-    private readonly AudibleDataGetter audibleDataGetter;
 
-    public Listener()
-    {
+    public Listener() {
         Precondition(Config.Get("RABBITMQ_HOST"), "Config RABBITMQ_HOST is missing");
         Precondition(Config.Get("RABBITMQ_USER"), "Config RABBITMQ_USER is missing");
         Precondition(Config.Get("RABBITMQ_PASS"), "Config RABBITMQ_PASS is missing");
@@ -55,7 +52,7 @@ internal class Listener
         Precondition(Config.Get("PROXY_LIST"), "Config PROXY_LIST is missing");
 
         Precondition(Config.Get("LISTENER_THREADS"), "Config LISTENER_THREADS is missing");
-        if (!int.TryParse(Config.Get("LISTENER_THREADS"), out var threads))
+        if (!int.TryParse(Config.Get("LISTENER_THREADS"), out int threads))
             Precondition(false, "Config LISTENER_THREADS is not a number");
 
         authorService = new AuthorService();
@@ -72,126 +69,107 @@ internal class Listener
         audibleDataGetter = new AudibleAPIDataGetter(downloadService);
 
         audibleDownloader = new AudibleDownloadManager(
-            bookService, authorService, narratorService,
-            categoryService, tagService, seriesService, userService, publisherService,
-            storageService, downloadService, downloadQueue, audibleDataGetter);
+                                                       bookService, authorService, narratorService,
+                                                       categoryService, tagService, seriesService, userService, publisherService,
+                                                       storageService, downloadService, downloadQueue, audibleDataGetter);
     }
 
-    public static void Main(string[] args)
-    {
+    public static void Main(string[] args) {
         DateTime start = DateTime.Now;
-        using (var context = new AudibleContext())
-        {
+        using (AudibleContext context = new()) {
             context.Database.EnsureCreated();
         }
+
         Console.WriteLine($@"Ensure Created Took {(DateTime.Now - start).TotalMilliseconds} ms");
-        
+
         new Listener().Run().Wait();
     }
 
-    public async Task Run()
-    {
+    public async Task Run() {
         //CreateListener();
 
-        var threads = int.Parse(Config.Get("LISTENER_THREADS"));
+        int threads = int.Parse(Config.Get("LISTENER_THREADS"));
         log.Info($"Starting {threads} listeners");
-        var tasks = new List<Task>();
-        for (var i = 0; i < threads; i++)
+        List<Task> tasks = new();
+        for (int i = 0; i < threads; i++)
             tasks.Add(Task.Run(() => { CreateListener(); }));
 
-        var refreshTimer = new Timer(state => OnRefreshSeries().Wait(),
-            null, TimeSpan.FromSeconds(5), RefreshTimerSeconds);
+        Timer refreshTimer = new(state => OnRefreshSeries().Wait(),
+                                 null, TimeSpan.FromSeconds(5), RefreshTimerSeconds);
         Task.WaitAll(tasks.ToArray());
     }
 
-    private async Task OnRefreshSeries()
-    {
-        try
-        {
+    private async Task OnRefreshSeries() {
+        try {
             log.Debug("Refreshing series");
-            var series = await seriesService.GetSeriesToRefresh();
+            List<AudibleSeries> series = await seriesService.GetSeriesToRefresh();
             if (series.Count == 0)
                 return;
 
             log.Info("Found {0} series to refresh", series.Count);
-            foreach (var s in series)
-            {
+            foreach (AudibleSeries s in series) {
                 log.Debug("Sending series {0} to be refreshed", s.Name);
                 await downloadQueue.SendDownloadSeries(s.Link, null, null);
             }
-        } catch (Exception e)
-        {
+        }
+        catch (Exception e) {
             log.Error(e, "Error while refreshing series");
         }
     }
 
-    private void Precondition(object? obj, string message)
-    {
-        if (obj == null)
-        {
+    private void Precondition(object? obj, string message) {
+        if (obj == null) {
             log.Fatal(message);
             throw new ArgumentNullException(message);
         }
 
-        if (obj is string && string.IsNullOrWhiteSpace((string)obj))
-        {
+        if (obj is string && string.IsNullOrWhiteSpace((string)obj)) {
             log.Fatal(message);
             throw new ArgumentException(message);
         }
     }
 
-    private void CreateListener()
-    {
+    private void CreateListener() {
         while (!shutDown)
-        {
-            try
-            {
-                downloadQueue.GetChannel(async (channel, channelName) =>
-                {
+            try {
+                downloadQueue.GetChannel(async (channel, channelName) => {
                     channel.BasicQos(0, 1, false);
 
-                    var consumer = new EventingBasicConsumer(channel);
-                    consumer.Received += async (model, ea) =>
-                    {
+                    EventingBasicConsumer consumer = new(channel);
+                    consumer.Received += async (model, ea) => {
                         DateTime start = DateTime.Now;
-                        var body = ea.Body.ToArray();
-                        var message = Encoding.UTF8.GetString(body);
-                        try
-                        {
+                        byte[] body = ea.Body.ToArray();
+                        string message = Encoding.UTF8.GetString(body);
+                        try {
                             log.Debug($"Received {message.Replace("\n", " ")}, Redelivery? {ea.Redelivered}");
 
                             await OnMessage(message);
 
                             channel.BasicAck(ea.DeliveryTag, false);
                         }
-                        catch (RetryableException e)
-                        {
+                        catch (RetryableException e) {
                             log.Warn(e, "Got a retryable exception, requeueing message");
                             channel.BasicNack(ea.DeliveryTag, false, true);
                             log.Debug("Sleeping for 2 sek after error");
                             await Task.Delay(2000);
                         }
-                        catch (FatalException e)
-                        {
+                        catch (FatalException e) {
                             log.Fatal(e, "Got a fatal exception, not requeueing message");
                             channel.BasicNack(ea.DeliveryTag, false, false);
                             log.Debug("Sleeping for 2 sek after error");
                             await Task.Delay(2000);
                         }
-                        catch (Exception e)
-                        {
-                            var redeliver = !(ea.Redelivered || e is FatalException);
+                        catch (Exception e) {
+                            bool redeliver = !(ea.Redelivered || e is FatalException);
                             log.Fatal(e, "Got unknown exception while processing message. Will redeliver? {0}",
-                                redeliver);
+                                      redeliver);
                             channel.BasicNack(ea.DeliveryTag, false, redeliver);
                             log.Debug("Sleeping for 2 sek after error");
                             await Task.Delay(2000);
                         }
-                        finally
-                        {
+                        finally {
                             double waitTime = (DateTime.Now - start).TotalMilliseconds;
-                            if (waitTime < MinProcessingTimeMs)
-                            {
+                            if (waitTime < MinProcessingTimeMs) {
                                 log.Info("We are too fast, sleeping for {0} ms", MinProcessingTimeMs - waitTime);
                                 await Task.Delay((int)(MinProcessingTimeMs - waitTime));
                             }
@@ -199,23 +177,20 @@ internal class Listener
                     };
                     // This kicks off the reading from the queue
                     channel.BasicConsume(channelName,
-                        false,
-                        consumer);
+                                         false,
+                                         consumer);
                     while (!shutDown) Task.Delay(1000).Wait();
                 }).Wait();
-            } catch (Exception e)
-            {
+            }
+            catch (Exception e) {
                 log.Fatal(e, "Error listener failed, restarting listener");
             }
-        }
     }
 
-    private async Task OnMessage(string message)
-    {
+    private async Task OnMessage(string message) {
         DateTime start = DateTime.Now;
         dynamic json = JsonConvert.DeserializeObject<dynamic>(message);
-        if (json == null)
-        {
+        if (json == null) {
             log.Error("Failed to parse message \"{0}\"", message);
             throw new FatalException("Failed to parse message");
         }
@@ -227,23 +202,19 @@ internal class Listener
         int? jobId = json.jobId;
         string type = ((string)json.type).Trim();
         string asin = ((string)json.asin).Trim();
-        
-        if (type == null)
-        {
+
+        if (type == null) {
             log.Error("Failed to parse message \"{0}\" missing url", message);
             throw new FatalException("Failed to parse message");
         }
-        
-        if (asin == null)
-        {
+
+        if (asin == null) {
             log.Error("Failed to parse message \"{0}\" missing asin", message);
             throw new FatalException("Failed to parse message");
         }
 
-        try
-        {
-            switch (type.Trim())
-            {
+        try {
+            switch (type.Trim()) {
                 case "book":
                     await audibleDownloader.DownloadBook(asin, userId, addToUser, force);
                     break;
@@ -257,14 +228,13 @@ internal class Listener
 
             if (jobId != null) await userService.FinishJob((int)jobId);
         }
-        catch (FatalException e)
-        {
-            if (jobId != null)
-            {
+        catch (FatalException e) {
+            if (jobId != null) {
                 log.Info("Delete job {0} as it cause a fatal exception", jobId);
                 await userService.FinishJob((int)jobId);
             }
         }
+
         log.Info($"Processing message took {(DateTime.Now - start).TotalMilliseconds} ms ({type}, {asin})");
     }
 }

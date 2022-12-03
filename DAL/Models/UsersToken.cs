@@ -1,7 +1,6 @@
 ﻿namespace AudibleDownloader.DAL.Models;
 
-public partial class UsersToken
-{
+public class UsersToken {
     public int Id { get; set; }
 
     public int UserId { get; set; }

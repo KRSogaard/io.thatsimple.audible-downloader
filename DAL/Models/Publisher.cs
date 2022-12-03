@@ -1,7 +1,6 @@
 ﻿namespace AudibleDownloader.DAL.Models;
 
-public partial class Publisher
-{
+public class Publisher {
     public int Id { get; set; }
 
     public string Name { get; set; }
