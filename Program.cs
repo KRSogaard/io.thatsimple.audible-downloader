@@ -138,47 +138,56 @@ internal class Listener
 
     private void CreateListener()
     {
-        downloadQueue.GetChannel(async (channel, channelName) =>
+        while (!shutDown)
         {
-            channel.BasicQos(0, 1, false);
-
-            var consumer = new EventingBasicConsumer(channel);
-            consumer.Received += async (model, ea) =>
+            try
             {
-                var body = ea.Body.ToArray();
-                var message = Encoding.UTF8.GetString(body);
-                try
+                downloadQueue.GetChannel(async (channel, channelName) =>
                 {
-                    log.Debug($"Received {message.Replace("\n", " ")}, Redelivery? {ea.Redelivered}");
+                    channel.BasicQos(0, 1, false);
 
-                    await OnMessage(message);
+                    var consumer = new EventingBasicConsumer(channel);
+                    consumer.Received += async (model, ea) =>
+                    {
+                        var body = ea.Body.ToArray();
+                        var message = Encoding.UTF8.GetString(body);
+                        try
+                        {
+                            log.Debug($"Received {message.Replace("\n", " ")}, Redelivery? {ea.Redelivered}");
 
-                    channel.BasicAck(ea.DeliveryTag, false);
-                }
-                catch (RetryableException e)
-                {
-                    log.Warn(e, "Got a retryable exception, requeueing message");
-                    channel.BasicNack(ea.DeliveryTag, false, true);
-                }
-                catch (FatalException e)
-                {
-                    log.Fatal(e, "Got a fatal exception, not requeueing message");
-                    channel.BasicNack(ea.DeliveryTag, false, false);
-                }
-                catch (Exception e)
-                {
-                    var redeliver = !(ea.Redelivered || e is FatalException);
-                    log.Fatal(e, "Got unknown exception while processing message. Will redeliver? {0}",
-                        redeliver);
-                    channel.BasicNack(ea.DeliveryTag, false, redeliver);
-                }
-            };
-            // This kicks off the reading from the queue
-            channel.BasicConsume(channelName,
-                false,
-                consumer);
-            while (!shutDown) Task.Delay(1000).Wait();
-        }).Wait();
+                            await OnMessage(message);
+
+                            channel.BasicAck(ea.DeliveryTag, false);
+                        }
+                        catch (RetryableException e)
+                        {
+                            log.Warn(e, "Got a retryable exception, requeueing message");
+                            channel.BasicNack(ea.DeliveryTag, false, true);
+                        }
+                        catch (FatalException e)
+                        {
+                            log.Fatal(e, "Got a fatal exception, not requeueing message");
+                            channel.BasicNack(ea.DeliveryTag, false, false);
+                        }
+                        catch (Exception e)
+                        {
+                            var redeliver = !(ea.Redelivered || e is FatalException);
+                            log.Fatal(e, "Got unknown exception while processing message. Will redeliver? {0}",
+                                redeliver);
+                            channel.BasicNack(ea.DeliveryTag, false, redeliver);
+                        }
+                    };
+                    // This kicks off the reading from the queue
+                    channel.BasicConsume(channelName,
+                        false,
+                        consumer);
+                    while (!shutDown) Task.Delay(1000).Wait();
+                }).Wait();
+            } catch (Exception e)
+            {
+                log.Fatal(e, "Error listener failed, restarting listener");
+            }
+        }
     }
 
     private async Task OnMessage(string message)

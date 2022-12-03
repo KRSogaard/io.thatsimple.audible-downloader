@@ -55,7 +55,7 @@ public partial class AudibleContext : DbContext
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
-        optionsBuilder.LogTo(message => log.Debug(message));
+        optionsBuilder.LogTo(message => log.Trace(message));
         
         if (String.IsNullOrWhiteSpace(connectionString))
         {
@@ -89,44 +89,56 @@ public partial class AudibleContext : DbContext
 
             entity.Property(e => e.Id)
                 .HasColumnType("int(11)")
-                .HasColumnName("id");
+                .HasColumnName("id")
+                .HasColumnOrder(0)
+                .ValueGeneratedOnAdd();
             entity.Property(e => e.Asin)
                 .HasMaxLength(128)
                 .HasColumnName("asin")
-                .IsRequired();
-            entity.Property(e => e.Created)
-                .HasColumnType("int(11)")
-                .HasColumnName("created");
-            entity.Property(e => e.Link)
-                .HasMaxLength(512)
-                .HasColumnName("link");
+                .HasColumnOrder(1);
             entity.Property(e => e.Name)
                 .HasMaxLength(128)
-                .HasColumnName("name");
+                .HasColumnName("name")
+                .HasColumnOrder(2)
+                .IsRequired();
+            entity.Property(e => e.Link)
+                .HasMaxLength(512)
+                .HasColumnName("link")
+                .HasColumnOrder(3);
+            entity.Property(e => e.Created)
+                .HasColumnType("int(11)")
+                .HasColumnName("created")
+                .HasColumnOrder(4)
+                .IsRequired();
         });
-
+        
         modelBuilder.Entity<AuthorsBook>(entity =>
         {
             entity.HasKey(e => e.Id).HasName("PRIMARY");
-
             entity.ToTable("authors_books");
-
             entity.HasIndex(e => e.AuthorId, "author_id");
-
             entity.HasIndex(e => e.BookId, "book_id");
 
             entity.Property(e => e.Id)
                 .HasColumnType("int(11)")
-                .HasColumnName("id");
+                .HasColumnName("id")
+                .HasColumnOrder(0)
+                .ValueGeneratedOnAdd();
             entity.Property(e => e.AuthorId)
                 .HasColumnType("int(11)")
-                .HasColumnName("author_id");
+                .HasColumnName("author_id")
+                .HasColumnOrder(1)
+                .IsRequired();
             entity.Property(e => e.BookId)
                 .HasColumnType("int(11)")
-                .HasColumnName("book_id");
+                .HasColumnName("book_id")
+                .HasColumnOrder(2)
+                .IsRequired();
             entity.Property(e => e.Created)
                 .HasColumnType("int(11)")
-                .HasColumnName("created");
+                .HasColumnName("created")
+                .HasColumnOrder(3)
+                .IsRequired();
 
             entity.HasOne(d => d.Author).WithMany(p => p.AuthorsBooks)
                 .HasForeignKey(d => d.AuthorId)
@@ -147,44 +159,67 @@ public partial class AudibleContext : DbContext
 
             entity.Property(e => e.Id)
                 .HasColumnType("int(11)")
-                .HasColumnName("id");
+                .HasColumnName("id")
+                .HasColumnOrder(0)
+                .ValueGeneratedOnAdd();
             entity.Property(e => e.Asin)
                 .HasMaxLength(128)
-                .HasColumnName("asin");
-            entity.Property(e => e.AuthorsCache)
-                .HasColumnType("text")
-                .HasColumnName("authors_cache");
-            entity.Property(e => e.CategoriesCache)
-                .HasColumnType("text")
-                .HasColumnName("categories_cache");
-            entity.Property(e => e.Created)
-                .HasColumnType("int(11)")
-                .HasColumnName("created");
-            entity.Property(e => e.LastUpdated)
-                .HasColumnType("int(11)")
-                .HasColumnName("last_updated");
-            entity.Property(e => e.Length)
-                .HasColumnType("int(11)")
-                .HasColumnName("length");
-            entity.Property(e => e.Link)
-                .HasColumnType("text")
-                .HasColumnName("link");
-            entity.Property(e => e.NarratorsCache)
-                .HasColumnType("text")
-                .HasColumnName("narrators_cache");
-            entity.Property(e => e.Released)
-                .HasColumnType("int(11)")
-                .HasColumnName("released");
-            entity.Property(e => e.ShouldDownload).HasColumnName("should_download");
-            entity.Property(e => e.Summary)
-                .HasColumnType("text")
-                .HasColumnName("summary");
-            entity.Property(e => e.TagsCache)
-                .HasColumnType("text")
-                .HasColumnName("tags_cache");
+                .HasColumnName("asin")
+                .HasColumnOrder(1)
+                .IsRequired();
             entity.Property(e => e.Title)
                 .HasMaxLength(255)
-                .HasColumnName("title");
+                .HasColumnName("title")
+                .HasColumnOrder(2);
+            entity.Property(e => e.Length)
+                .HasColumnType("int(11)")
+                .HasColumnName("length")
+                .HasColumnOrder(3);
+            entity.Property(e => e.Link)
+                .HasColumnType("text")
+                .HasColumnName("link")
+                .HasColumnOrder(4);
+            entity.Property(e => e.Released)
+                .HasColumnType("int(11)")
+                .HasColumnName("released")
+                .HasColumnOrder(5);
+            entity.Property(e => e.Summary)
+                .HasColumnType("text")
+                .HasColumnName("summary")
+                .HasColumnOrder(6);
+            entity.Property(e => e.Created)
+                .HasColumnType("int(11)")
+                .HasColumnName("created")
+                .HasColumnOrder(7)
+                .IsRequired();
+            entity.Property(e => e.LastUpdated)
+                .HasColumnType("int(11)")
+                .HasColumnName("last_updated")
+                .HasColumnOrder(8)
+                .IsRequired();
+            entity.Property(e => e.NarratorsCache)
+                .HasColumnType("text")
+                .HasColumnName("narrators_cache")
+                .HasColumnOrder(9);
+            entity.Property(e => e.TagsCache)
+                .HasColumnType("text")
+                .HasColumnName("tags_cache")
+                .HasColumnOrder(10);
+            entity.Property(e => e.AuthorsCache)
+                .HasColumnType("text")
+                .HasColumnName("authors_cache")
+                .HasColumnOrder(11);
+            entity.Property(e => e.CategoriesCache)
+                .HasColumnType("text")
+                .HasColumnName("categories_cache")
+                .HasColumnOrder(12);
+            entity.Property(e => e.ShouldDownload)
+                .HasColumnName("should_download")
+                .HasColumnOrder(13);
+            entity.Property(e => e.IsTemp)
+                .HasColumnName("is_temp")
+                .HasColumnOrder(14);
+
         });
 
         modelBuilder.Entity<CategoriesBook>(entity =>
@@ -199,16 +234,24 @@ public partial class AudibleContext : DbContext
 
             entity.Property(e => e.Id)
                 .HasColumnType("int(11)")
-                .HasColumnName("id");
-            entity.Property(e => e.BookId)
-                .HasColumnType("int(11)")
-                .HasColumnName("book_id");
+                .HasColumnName("id")
+                .HasColumnOrder(0)
+                .ValueGeneratedOnAdd();
             entity.Property(e => e.CategoryId)
                 .HasColumnType("int(11)")
-                .HasColumnName("category_id");
+                .HasColumnName("category_id")
+                .HasColumnOrder(1)
+                .IsRequired();
+            entity.Property(e => e.BookId)
+                .HasColumnType("int(11)")
+                .HasColumnName("book_id")
+                .HasColumnOrder(2)
+                .IsRequired();
             entity.Property(e => e.Created)
                 .HasColumnType("int(11)")
-                .HasColumnName("created");
+                .HasColumnName("created")
+                .HasColumnOrder(3)
+                .IsRequired();
 
             entity.HasOne(d => d.Book).WithMany(p => p.CategoriesBooks)
                 .HasForeignKey(d => d.BookId)
@@ -229,16 +272,24 @@ public partial class AudibleContext : DbContext
 
             entity.Property(e => e.Id)
                 .HasColumnType("int(11)")
-                .HasColumnName("id");
-            entity.Property(e => e.Created)
-                .HasColumnType("int(11)")
-                .HasColumnName("created");
-            entity.Property(e => e.Link)
-                .HasMaxLength(512)
-                .HasColumnName("link");
+                .HasColumnName("id")
+                .HasColumnOrder(0)
+                .ValueGeneratedOnAdd();
             entity.Property(e => e.Name)
                 .HasMaxLength(128)
-                .HasColumnName("name");
+                .HasColumnName("name")
+                .HasColumnOrder(1)
+                .IsRequired();
+            entity.Property(e => e.Link)
+                .HasMaxLength(512)
+                .HasColumnName("link")
+                .HasColumnOrder(2)
+                .IsRequired();
+            entity.Property(e => e.Created)
+                .HasColumnType("int(11)")
+                .HasColumnName("created")
+                .HasColumnOrder(3)
+                .IsRequired();
         });
 
         modelBuilder.Entity<Narrator>(entity =>
@@ -249,13 +300,19 @@ public partial class AudibleContext : DbContext
 
             entity.Property(e => e.Id)
                 .HasColumnType("int(11)")
-                .HasColumnName("id");
-            entity.Property(e => e.Created)
-                .HasColumnType("int(11)")
-                .HasColumnName("created");
+                .HasColumnName("id")
+                .HasColumnOrder(0)
+                .ValueGeneratedOnAdd();
             entity.Property(e => e.Name)
                 .HasMaxLength(128)
-                .HasColumnName("name");
+                .HasColumnName("name")
+                .HasColumnOrder(1)
+                .IsRequired();
+            entity.Property(e => e.Created)
+                .HasColumnType("int(11)")
+                .HasColumnName("created")
+                .HasColumnOrder(2)
+                .IsRequired();
         });
 
         modelBuilder.Entity<NarratorsBook>(entity =>
@@ -270,16 +327,24 @@ public partial class AudibleContext : DbContext
 
             entity.Property(e => e.Id)
                 .HasColumnType("int(11)")
-                .HasColumnName("id");
-            entity.Property(e => e.BookId)
-                .HasColumnType("int(11)")
-                .HasColumnName("book_id");
-            entity.Property(e => e.Created)
-                .HasColumnType("int(11)")
-                .HasColumnName("created");
+                .HasColumnName("id")
+                .HasColumnOrder(0)
+                .ValueGeneratedOnAdd();
             entity.Property(e => e.NarratorId)
                 .HasColumnType("int(11)")
-                .HasColumnName("narrator_id");
+                .HasColumnName("narrator_id")
+                .HasColumnOrder(1)
+                .IsRequired();
+            entity.Property(e => e.BookId)
+                .HasColumnType("int(11)")
+                .HasColumnName("book_id")
+                .HasColumnOrder(2)
+                .IsRequired();
+            entity.Property(e => e.Created)
+                .HasColumnType("int(11)")
+                .HasColumnName("created")
+                .HasColumnOrder(3)
+                .IsRequired();
 
             entity.HasOne(d => d.Book).WithMany(p => p.NarratorsBooks)
                 .HasForeignKey(d => d.BookId)
@@ -300,29 +365,41 @@ public partial class AudibleContext : DbContext
 
             entity.Property(e => e.Id)
                 .HasColumnType("int(11)")
-                .HasColumnName("id");
+                .HasColumnName("id")
+                .HasColumnOrder(0)
+                .ValueGeneratedOnAdd();
             entity.Property(e => e.Asin)
                 .HasMaxLength(128)
-                .HasColumnName("asin");
-            entity.Property(e => e.Created)
-                .HasColumnType("int(11)")
-                .HasColumnName("created");
-            entity.Property(e => e.LastChecked)
-                .HasColumnType("int(11)")
-                .HasColumnName("last_checked");
-            entity.Property(e => e.LastUpdated)
-                .HasColumnType("int(11)")
-                .HasColumnName("last_updated");
-            entity.Property(e => e.Link)
-                .HasMaxLength(512)
-                .HasColumnName("link");
+                .HasColumnName("asin")
+                .HasColumnOrder(1)
+                .IsRequired();
             entity.Property(e => e.Name)
                 .HasMaxLength(128)
-                .HasColumnName("name");
-            entity.Property(e => e.ShouldDownload).HasColumnName("should_download");
-            entity.Property(e => e.Summary)
-                .HasColumnType("text")
-                .HasColumnName("summary");
+                .HasColumnName("name")
+                .HasColumnOrder(2);
+            entity.Property(e => e.Link)
+                .HasMaxLength(512)
+                .HasColumnName("link")
+                .HasColumnOrder(3);
+            entity.Property(e => e.Created)
+                .HasColumnType("int(11)")
+                .HasColumnName("created")
+                .HasColumnOrder(4)
+                .IsRequired();
+            entity.Property(e => e.LastUpdated)
+                .HasColumnType("int(11)")
+                .HasColumnName("last_updated")
+                .HasColumnOrder(5)
+                .IsRequired();
+            entity.Property(e => e.LastChecked)
+                .HasColumnType("int(11)")
+                .HasColumnName("last_checked")
+                .HasColumnOrder(6)
+                .IsRequired();
+            entity.Property(e => e.ShouldDownload)
+                .HasColumnName("should_download")
+                .HasColumnOrder(7)
+                .IsRequired();
         });
 
         modelBuilder.Entity<SeriesBook>(entity =>
@@ -337,19 +414,32 @@ public partial class AudibleContext : DbContext
 
             entity.Property(e => e.Id)
                 .HasColumnType("int(11)")
-                .HasColumnName("id");
-            entity.Property(e => e.BookId)
-                .HasColumnType("int(11)")
-                .HasColumnName("book_id");
-            entity.Property(e => e.BookNumber)
-                .HasMaxLength(64)
-                .HasColumnName("book_number");
-            entity.Property(e => e.Created)
-                .HasColumnType("int(11)")
-                .HasColumnName("created");
+                .HasColumnName("id")
+                .HasColumnOrder(0)
+                .ValueGeneratedOnAdd();
             entity.Property(e => e.SeriesId)
                 .HasColumnType("int(11)")
-                .HasColumnName("series_id");
+                .HasColumnName("series_id")
+                .HasColumnOrder(1)
+                .IsRequired();
+            entity.Property(e => e.BookId)
+                .HasColumnType("int(11)")
+                .HasColumnName("book_id")
+                .HasColumnOrder(2)
+                .IsRequired();
+            entity.Property(e => e.BookNumber)
+                .HasMaxLength(64)
+                .HasColumnName("book_number")
+                .HasColumnOrder(3);
+            entity.Property(e => e.Sort)
+                .HasMaxLength(64)
+                .HasColumnName("sort")
+                .HasColumnOrder(4);
+            entity.Property(e => e.Created)
+                .HasColumnType("int(11)")
+                .HasColumnName("created")
+                .HasColumnOrder(5)
+                .IsRequired();
 
             entity.HasOne(d => d.Book).WithMany(p => p.SeriesBooks)
                 .HasForeignKey(d => d.BookId)
@@ -370,13 +460,19 @@ public partial class AudibleContext : DbContext
 
             entity.Property(e => e.Id)
                 .HasColumnType("int(11)")
-                .HasColumnName("id");
+                .HasColumnName("id")
+                .HasColumnOrder(0)
+                .ValueGeneratedOnAdd();
+            entity.Property(e => e.Name)
+                .HasMaxLength(128)
+                .HasColumnName("tag")
+                .HasColumnOrder(1)
+                .IsRequired();
             entity.Property(e => e.Created)
                 .HasColumnType("int(11)")
-                .HasColumnName("created");
-            entity.Property(e => e.Tag1)
-                .HasMaxLength(128)
-                .HasColumnName("tag");
+                .HasColumnName("created")
+                .HasColumnOrder(2)
+                .IsRequired();
         });
 
         modelBuilder.Entity<TagsBook>(entity =>
@@ -391,16 +487,24 @@ public partial class AudibleContext : DbContext
 
             entity.Property(e => e.Id)
                 .HasColumnType("int(11)")
-                .HasColumnName("id");
-            entity.Property(e => e.BookId)
-                .HasColumnType("int(11)")
-                .HasColumnName("book_id");
-            entity.Property(e => e.Created)
-                .HasColumnType("int(11)")
-                .HasColumnName("created");
+                .HasColumnName("id")
+                .HasColumnOrder(0)
+                .ValueGeneratedOnAdd();
             entity.Property(e => e.TagId)
                 .HasColumnType("int(11)")
-                .HasColumnName("tag_id");
+                .HasColumnName("tag_id")
+                .HasColumnOrder(1)
+                .IsRequired();
+            entity.Property(e => e.BookId)
+                .HasColumnType("int(11)")
+                .HasColumnName("book_id")
+                .HasColumnOrder(2)
+                .IsRequired();
+            entity.Property(e => e.Created)
+                .HasColumnType("int(11)")
+                .HasColumnName("created")
+                .HasColumnOrder(3)
+                .IsRequired();
 
             entity.HasOne(d => d.Book).WithMany(p => p.TagsBooks)
                 .HasForeignKey(d => d.BookId)
@@ -421,22 +525,34 @@ public partial class AudibleContext : DbContext
 
             entity.Property(e => e.Id)
                 .HasColumnType("int(11)")
-                .HasColumnName("id");
-            entity.Property(e => e.Created)
-                .HasColumnType("int(11)")
-                .HasColumnName("created");
+                .HasColumnName("id")
+                .HasColumnOrder(0)
+                .ValueGeneratedOnAdd();
             entity.Property(e => e.Email)
                 .HasMaxLength(256)
-                .HasColumnName("email");
-            entity.Property(e => e.Password)
-                .HasMaxLength(128)
-                .HasColumnName("password");
-            entity.Property(e => e.PasswordSalt)
-                .HasMaxLength(20)
-                .HasColumnName("password_salt");
+                .HasColumnName("email")
+                .HasColumnOrder(1)
+                .IsRequired();
             entity.Property(e => e.Username)
                 .HasMaxLength(128)
-                .HasColumnName("username");
+                .HasColumnName("username")
+                .HasColumnOrder(2)
+                .IsRequired();
+            entity.Property(e => e.Password)
+                .HasMaxLength(128)
+                .HasColumnName("password")
+                .HasColumnOrder(3)
+                .IsRequired();
+            entity.Property(e => e.PasswordSalt)
+                .HasMaxLength(20)
+                .HasColumnName("password_salt")
+                .HasColumnOrder(4)
+                .IsRequired();
+            entity.Property(e => e.Created)
+                .HasColumnType("int(11)")
+                .HasColumnName("created")
+                .HasColumnOrder(5)
+                .IsRequired();
         });
 
         modelBuilder.Entity<UsersArchivedSeries>(entity =>
@@ -451,16 +567,24 @@ public partial class AudibleContext : DbContext
 
             entity.Property(e => e.Id)
                 .HasColumnType("int(11)")
-                .HasColumnName("id");
-            entity.Property(e => e.Created)
-                .HasColumnType("int(11)")
-                .HasColumnName("created");
-            entity.Property(e => e.SeriesId)
-                .HasColumnType("int(11)")
-                .HasColumnName("series_id");
+                .HasColumnName("id")
+                .HasColumnOrder(0)
+                .ValueGeneratedOnAdd();
             entity.Property(e => e.UserId)
                 .HasColumnType("int(11)")
-                .HasColumnName("user_id");
+                .HasColumnName("user_id")
+                .HasColumnOrder(1)
+                .IsRequired();
+            entity.Property(e => e.SeriesId)
+                .HasColumnType("int(11)")
+                .HasColumnName("series_id")
+                .HasColumnOrder(2)
+                .IsRequired();
+            entity.Property(e => e.Created)
+                .HasColumnType("int(11)")
+                .HasColumnName("created")
+                .HasColumnOrder(3)
+                .IsRequired();
 
             entity.HasOne(d => d.Series).WithMany(p => p.UsersArchivedSeries)
                 .HasForeignKey(d => d.SeriesId)
@@ -485,16 +609,24 @@ public partial class AudibleContext : DbContext
 
             entity.Property(e => e.Id)
                 .HasColumnType("int(11)")
-                .HasColumnName("id");
-            entity.Property(e => e.BookId)
-                .HasColumnType("int(11)")
-                .HasColumnName("book_id");
-            entity.Property(e => e.Created)
-                .HasColumnType("int(11)")
-                .HasColumnName("created");
+                .HasColumnName("id")
+                .HasColumnOrder(0)
+                .ValueGeneratedOnAdd();
             entity.Property(e => e.UserId)
                 .HasColumnType("int(11)")
-                .HasColumnName("user_id");
+                .HasColumnName("user_id")
+                .HasColumnOrder(1)
+                .IsRequired();
+            entity.Property(e => e.BookId)
+                .HasColumnType("int(11)")
+                .HasColumnName("book_id")
+                .HasColumnOrder(2)
+                .IsRequired();
+            entity.Property(e => e.Created)
+                .HasColumnType("int(11)")
+                .HasColumnName("created")
+                .HasColumnOrder(3)
+                .IsRequired();
 
             entity.HasOne(d => d.Book).WithMany(p => p.UsersBooks)
                 .HasForeignKey(d => d.BookId)
@@ -517,19 +649,28 @@ public partial class AudibleContext : DbContext
 
             entity.Property(e => e.Id)
                 .HasColumnType("int(11)")
-                .HasColumnName("id");
-            entity.Property(e => e.Created)
-                .HasColumnType("int(11)")
-                .HasColumnName("created");
-            entity.Property(e => e.Payload)
-                .HasColumnType("text")
-                .HasColumnName("payload");
-            entity.Property(e => e.Type)
-                .HasMaxLength(128)
-                .HasColumnName("type");
+                .HasColumnName("id")
+                .HasColumnOrder(0)
+                .ValueGeneratedOnAdd();
             entity.Property(e => e.UserId)
                 .HasColumnType("int(11)")
-                .HasColumnName("user_id");
+                .HasColumnName("user_id")
+                .HasColumnOrder(1)
+                .IsRequired();
+            entity.Property(e => e.Type)
+                .HasMaxLength(128)
+                .HasColumnName("type")
+                .HasColumnOrder(2)
+                .IsRequired();
+            entity.Property(e => e.Payload)
+                .HasColumnType("text")
+                .HasColumnName("payload")
+                .HasColumnOrder(3);
+            entity.Property(e => e.Created)
+                .HasColumnType("int(11)")
+                .HasColumnName("created")
+                .HasColumnOrder(4)
+                .IsRequired();
 
             entity.HasOne(d => d.User).WithMany(p => p.UsersJobs)
                 .HasForeignKey(d => d.UserId)
@@ -547,19 +688,29 @@ public partial class AudibleContext : DbContext
 
             entity.Property(e => e.Id)
                 .HasColumnType("int(11)")
-                .HasColumnName("id");
-            entity.Property(e => e.Created)
-                .HasColumnType("int(11)")
-                .HasColumnName("created");
-            entity.Property(e => e.Expires)
-                .HasColumnType("int(11)")
-                .HasColumnName("expires");
-            entity.Property(e => e.Token)
-                .HasMaxLength(128)
-                .HasColumnName("token");
+                .HasColumnName("id")
+                .HasColumnOrder(0)
+                .ValueGeneratedOnAdd();
             entity.Property(e => e.UserId)
                 .HasColumnType("int(11)")
-                .HasColumnName("user_id");
+                .HasColumnName("user_id")
+                .HasColumnOrder(1)
+                .IsRequired();
+            entity.Property(e => e.Token)
+                .HasMaxLength(128)
+                .HasColumnName("token")
+                .HasColumnOrder(2)
+                .IsRequired();
+            entity.Property(e => e.Created)
+                .HasColumnType("int(11)")
+                .HasColumnName("created")
+                .HasColumnOrder(3)
+                .IsRequired();
+            entity.Property(e => e.Expires)
+                .HasColumnType("int(11)")
+                .HasColumnName("expires")
+                .HasColumnOrder(4)
+                .IsRequired();
 
             entity.HasOne(d => d.User).WithMany(p => p.UsersTokens)
                 .HasForeignKey(d => d.UserId)

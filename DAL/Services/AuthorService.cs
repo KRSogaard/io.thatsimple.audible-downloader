@@ -1,11 +1,10 @@
 ﻿using AudibleDownloader.Models;
 using AudibleDownloader.Utils;
 using Microsoft.EntityFrameworkCore;
-using MySql.Data.MySqlClient;
 using NLog;
-using AudibleDownloader.DAL;
 using AudibleDownloader.DAL.Models;
 using AudibleDownloader.Exceptions;
+using AudibleDownloader.Protobuf;
 
 namespace AudibleDownloader.DAL.Services
 {
@@ -13,12 +12,10 @@ namespace AudibleDownloader.DAL.Services
     {
         private readonly Logger log = LogManager.GetCurrentClassLogger();
 
-        public AuthorService()
-        {
-        }
-
         public async Task<AudibleAuthor?> GetAuthorAsin(string asin)
         {
+            Preconditions.CheckNotNullOrEmpty(asin, nameof(asin));
+            
             using (var context = new AudibleContext())
             {
                 return await context.Authors.Where(a => a.Asin == asin).Select(a => a.ToInternal()).FirstOrDefaultAsync();
@@ -37,9 +34,10 @@ namespace AudibleDownloader.DAL.Services
         {
             using (var context = new AudibleContext())
             {
-                return await context.Authors
-                    .Where(a => a.AuthorsBooks.Any(ab => ab.BookId == bookId))
-                    .Select(a => a.ToInternal()).ToListAsync();
+                return await (from a in context.Authors
+                    join ab in context.AuthorsBooks on a.Id equals ab.AuthorId
+                    where ab.BookId == bookId
+                    select a.ToInternal()).ToListAsync();
             }
         }
 
@@ -55,6 +53,9 @@ namespace AudibleDownloader.DAL.Services
         
         public async Task AddBookToAuthor(int bookId, AudibleAuthor author)
         {
+            Preconditions.CheckNotNull(author, nameof(author));
+            Preconditions.CheckNotNullOrEmpty(author.Name, "author.Name");
+            
             bool exists = await AuthorHasBook(bookId, author.Id);
             if (!exists)
             {
@@ -87,11 +88,34 @@ namespace AudibleDownloader.DAL.Services
             }
         }
 
-        public async Task<AudibleAuthor> SaveOrGetAuthor(string asin, string name, string link)
+        public async Task<AudibleAuthor> SaveOrGetAuthor(string? asin, string name, string? link)
         {
-            var check = await GetAuthorAsin(asin);
+            Preconditions.CheckNotNullOrEmpty(name, nameof(name));
+            
+            AudibleAuthor? check = null;
+            if (asin != null)
+            {
+                check = await GetAuthorAsin(asin);
+            }
+            if (check == null)
+            {
+                check = await GetAuthorByName(name);
+            }
+
             if (check != null)
             {
+                if (string.IsNullOrWhiteSpace(check.Asin) && asin != null || string.IsNullOrWhiteSpace(check.Link) && link != null)
+                {
+                    using (var context = new AudibleContext())
+                    {
+                        var author = await context.Authors.Where(a => a.Id == check.Id).FirstAsync();
+                        author.Asin = asin;
+                        author.Link = link;
+                        await context.SaveChangesAsync();
+                        return author.ToInternal();
+                    }
+                }
+                
                 log.Trace("Author {0} already exists", name);
                 return check;
             }
@@ -103,11 +127,23 @@ namespace AudibleDownloader.DAL.Services
                 {
                     Asin = asin,
                     Name = name,
-                    Link = link
+                    Link = link,
+                    Created = DateTimeOffset.Now.ToUnixTimeSeconds()
                 };
-                var test = await context.Authors.AddAsync(authorDal);
+                await context.Authors.AddAsync(authorDal);
                 await context.SaveChangesAsync();
                 return authorDal.ToInternal();
+            }
+        }
+
+        private async Task<AudibleAuthor?> GetAuthorByName(string name)
+        {
+            using (var context = new AudibleContext())
+            {
+                return await context.Authors
+                    .Where(a => a.Name.ToLower() == name.ToLower())
+                    .Select(a => a.ToInternal())
+                    .FirstOrDefaultAsync();
             }
         }
     }

@@ -11,7 +11,7 @@ public class CategoryService
     public Task<List<AudibleCategory>> getCategoriesForBook(int bookId)
     {
         return MSU.Query(
-            "SELECT `authors`.* FROM `authors` LEFT JOIN `authors_books` ON `authors_books`.author_id = `authors`.id WHERE `authors_books`.book_id = @bookId",
+            "SELECT `categories`.* FROM `categories` LEFT JOIN `categories_books` ON `categories_books`.category_id = `categories`.id WHERE `categories_books`.book_id = @bookId",
             new Dictionary<string, object> { { "@bookId", bookId } }, async reader =>
             {
                 var categories = new List<AudibleCategory>();

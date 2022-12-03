@@ -4,15 +4,17 @@ public partial class SeriesBook
 {
     public int Id { get; set; }
 
-    public int? SeriesId { get; set; }
+    public int SeriesId { get; set; }
 
-    public int? BookId { get; set; }
+    public int BookId { get; set; }
 
     public string? BookNumber { get; set; }
 
-    public int? Created { get; set; }
+    public int? Sort { get; set; }
 
-    public virtual Book? Book { get; set; }
+    public long Created { get; set; }
 
-    public virtual Series? Series { get; set; }
+    public virtual Book Book { get; set; }
+
+    public virtual Series Series { get; set; }
 }

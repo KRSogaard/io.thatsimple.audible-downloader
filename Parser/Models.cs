@@ -50,6 +50,8 @@ public class ParseAudioBookSeries
 
     [JsonPropertyName("bookNumber")] public string? BookNumber { get; set; }
 
+    [JsonPropertyName("bookNumber")] public int? Sort { get; set; }
+
     [JsonPropertyName("summary")] public string? Summary { get; set; }
 }
 
@@ -77,13 +79,14 @@ public class ParseSeries
 
 public class ParseSeriesBook
 {
-    [JsonPropertyName("bookNumber")] public string BookNumber { get; set; }
 
     [JsonPropertyName("title")] public string Title { get; set; }
 
     [JsonPropertyName("asin")] public string Asin { get; set; }
 
     [JsonPropertyName("link")] public string Link { get; set; }
+    [JsonPropertyName("bookNumber")] public string? BookNumber { get; set; }
+    [JsonPropertyName("sort")] public int? Sort { get; set; }
 
     [JsonPropertyName("releaseDate")] public long? ReleaseDate { get; set; }
 

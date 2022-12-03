@@ -4,31 +4,21 @@ public partial class Book
 {
     public int Id { get; set; }
 
-    public string Asin { get; set; } = null!;
-
-    public string? Link { get; set; }
-
+    public string Asin { get; set; }
     public string? Title { get; set; }
-
     public int? Length { get; set; }
-
-    public int? Released { get; set; }
-
+    public string? Link { get; set; }
+    public long? Released { get; set; }
     public string? Summary { get; set; }
-
-    public int? LastUpdated { get; set; }
-
-    public int? Created { get; set; }
+    public long LastUpdated { get; set; }
+    public long Created { get; set; }
 
     public string? CategoriesCache { get; set; }
-
     public string? TagsCache { get; set; }
-
     public string? NarratorsCache { get; set; }
-
     public string? AuthorsCache { get; set; }
-
-    public bool? ShouldDownload { get; set; }
+    public bool ShouldDownload { get; set; }
+    public bool IsTemp { get; set; }
 
     public virtual ICollection<AuthorsBook> AuthorsBooks { get; } = new List<AuthorsBook>();
 

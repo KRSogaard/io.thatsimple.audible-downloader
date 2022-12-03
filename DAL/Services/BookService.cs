@@ -60,7 +60,7 @@ public class BookService
         {
             Id = bookId,
             Asin = reader.GetString("asin"),
-            Link = reader.GetString("link"),
+            Link = MSU.GetStringOrNull(reader, "link"),
             Title = MSU.GetStringOrNull(reader, "title"),
             Length = MSU.GetInt32OrNull(reader, "length"),
             Released = MSU.GetInt64OrNull(reader, "released"),
@@ -71,7 +71,8 @@ public class BookService
             Tags = tags,
             Narrators = narrators,
             Categories = categories,
-            ShouldDownload = MSU.GetInt32OrNull(reader, "should_download") == 1
+            ShouldDownload = MSU.GetInt32OrNull(reader, "should_download") == 1,
+            IsTemp = MSU.GetInt32OrNull(reader, "is_temp") == 1,
         };
     }
 
@@ -108,12 +109,12 @@ public class BookService
         {
             log.Debug("Book {0} already exists updating", title);
             await MSU.Execute(
-                "UPDATE `books` SET `link` = @link, `title` = @title, `length` = @length, `released` = @released, `summary` = @summary, `last_updated` = @lastUpdated, `should_download` = @shouldDownload WHERE `asin` = @asin",
+                "UPDATE `books` SET `link` = @link, `title` = @title, `length` = @length, `released` = @released, `summary` = @summary, `last_updated` = @lastUpdated, `should_download` = @shouldDownload, `is_temp` = @isTemp WHERE `asin` = @asin",
                 new Dictionary<string, object>
                 {
                     { "@link", link }, { "@title", title }, { "@length", runtime }, { "@released", released },
                     { "@summary", summary }, { "@lastUpdated", (int)DateTimeOffset.Now.ToUnixTimeSeconds() },
-                    { "@asin", asin }, { "@shouldDownload", false }
+                    { "@asin", asin }, { "@shouldDownload", false }, { "@isTemp", false }
                 });
             bookId = checkBook.Id;
         }
@@ -121,12 +122,18 @@ public class BookService
         {
             log.Info("Book {0} does not exist, creating", title);
             bookId = await MSU.QueryWithCommand(
-                "INSERT INTO `books` (`asin`, `link`, `title`, `length`, `released`, `summary`, `last_updated`, `created`) VALUES (@asin, @link, @title, @length, @released, @summary, @created, @created)",
+                "INSERT INTO `books` (`asin`, `link`, `title`, `length`, `released`, `summary`, `last_updated`, `created`, `should_download`, `is_temp`) VALUES (@asin, @link, @title, @length, @released, @summary, @created, @created, @shouldDownload, @isTemp)",
                 new Dictionary<string, object>
                 {
-                    { "@asin", asin }, { "@link", link }, { "@title", title }, { "@length", runtime },
-                    { "@released", released }, { "@summary", summary },
-                    { "@created", (int)DateTimeOffset.Now.ToUnixTimeSeconds() }
+                    { "@asin", asin }, 
+                    { "@link", link }, 
+                    { "@title", title }, 
+                    { "@length", runtime },
+                    { "@released", released }, 
+                    { "@summary", summary },
+                    { "@shouldDownload", false },
+                    { "@created", (int)DateTimeOffset.Now.ToUnixTimeSeconds() },
+                    { "@isTemp", false }
                 },
                 async (reader, cmd) => { return (int)cmd.LastInsertedId; });
         }
@@ -144,15 +151,28 @@ public class BookService
     {
         log.Debug("Creating temp book with asin {0}", asin);
         return MSU.QueryWithCommand(
-            "INSERT INTO `books` (`asin`, `title`, `created`, `last_updated`, `should_download`) VALUES (@asin, @title, @created, @created, @shouldDownload)",
+            "INSERT INTO `books` (`asin`, `title`, `created`, `last_updated`, `should_download`, `is_temp`) VALUES (@asin, @title, @created, @created, @shouldDownload, @isTemp)",
             new Dictionary<string, object>
             {
                 { "@asin", asin },
-                { "@title", "Pending" },
+                { "@title", "Pending Download" },
                 { "@created", (int)DateTimeOffset.Now.ToUnixTimeSeconds() },
-                { "@shouldDownload", true }
+                { "@shouldDownload", true },
+                { "@isTemp", true }
             },
             async (reader, cmd) => { return (int)cmd.LastInsertedId; }
+        );
+    }
+
+    public Task DeleteBookAsin(string asin)
+    {
+        log.Debug("Deleting book with asin {0}", asin);
+        return MSU.Execute(
+            "DELETE FROM `books` WHERE `asin` = @asin",
+            new Dictionary<string, object>
+            {
+                { "@asin", asin },
+            }
         );
     }
 }

@@ -2,35 +2,6 @@
 
 namespace AudibleDownloader.Models;
 
-public class BulkAudibleBook
-{
-    [JsonPropertyName("id")] public int Id { get; set; }
-
-    [JsonPropertyName("asin")] public string Asin { get; set; }
-
-    [JsonPropertyName("link")] public string Link { get; set; }
-
-    [JsonPropertyName("title")] public string Title { get; set; }
-
-    [JsonPropertyName("length")] public int Length { get; set; }
-
-    [JsonPropertyName("released")] public int Released { get; set; }
-
-    [JsonPropertyName("summary")] public string Summary { get; set; }
-
-    [JsonPropertyName("lastUpdated")] public long LastUpdated { get; set; }
-
-    [JsonPropertyName("series")] public List<SimpleSeries> Series { get; set; }
-
-    [JsonPropertyName("authors")] public List<IdValueInfo> Authors { get; set; }
-
-    [JsonPropertyName("tags")] public List<IdValueInfo> Tags { get; set; }
-
-    [JsonPropertyName("narrators")] public List<IdValueInfo> Narrators { get; set; }
-
-    [JsonPropertyName("categories")] public List<IdValueInfo> Categories { get; set; }
-}
-
 public class IdValueInfo
 {
     [JsonPropertyName("id")] public int Id { get; set; }
@@ -44,7 +15,7 @@ public class AudibleBook
 
     [JsonPropertyName("asin")] public string Asin { get; set; }
 
-    [JsonPropertyName("link")] public string Link { get; set; }
+    [JsonPropertyName("link")] public string? Link { get; set; }
 
     [JsonPropertyName("title")] public string? Title { get; set; }
 
@@ -67,6 +38,7 @@ public class AudibleBook
     [JsonPropertyName("categories")] public List<AudibleCategory> Categories { get; set; }
 
     [JsonPropertyName("shouldDownload")] public bool ShouldDownload { get; set; }
+    [JsonPropertyName("isTemp")] public bool IsTemp { get; set; }
 }
 
 public class SimpleSeries
@@ -132,8 +104,6 @@ public class AudibleSeries
     [JsonPropertyName("asin")] public string Asin { get; set; }
 
     [JsonPropertyName("link")] public string Link { get; set; }
-
-    [JsonPropertyName("summary")] public string? Summary { get; set; }
 
     [JsonPropertyName("name")] public string Name { get; set; }
 

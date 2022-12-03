@@ -9,7 +9,7 @@ public class SeriesService
 {
     private readonly Logger log = LogManager.GetCurrentClassLogger();
 
-    public async Task AddBookToSeries(int bookId, int seriesId, string bookNumber)
+    public async Task AddBookToSeries(int bookId, int seriesId, string? bookNumber, int? sort)
     {
         var storedBookNumber = await MSU.Query(
             "SELECT * FROM `series_books` WHERE `book_id` = @bookId AND `series_id` = @seriesId",
@@ -17,26 +17,27 @@ public class SeriesService
             {
                 if (!await reader.ReadAsync())
                     return null;
-                return new Tuple<string>(MSU.GetStringOrNull(reader, "book_number"));
+                return new Tuple<string?, int?>(MSU.GetStringOrNull(reader, "book_number"), MSU.GetInt32OrNull(reader, "sort"));
             });
 
         if (storedBookNumber == null)
         {
             log.Trace("Adding book {0} to series {1} with book number {2}", bookId, seriesId, bookNumber);
             await MSU.Execute(
-                "INSERT INTO `series_books` (`book_id`, `series_id`, `book_number`, `created`) VALUES (@bookId, @seriesId, @bookNumber, @created)",
+                "INSERT INTO `series_books` (`book_id`, `series_id`, `book_number`, `sort`, `created`) VALUES (@bookId, @seriesId, @bookNumber, @sort, @created)",
                 new Dictionary<string, object>
                 {
                     { "@bookId", bookId },
                     { "@seriesId", seriesId },
                     { "@bookNumber", string.IsNullOrWhiteSpace(bookNumber) ? null : bookNumber.Trim() },
-                    { "@created", DateTimeOffset.Now.ToUnixTimeSeconds() }
+                    { "@created", DateTimeOffset.Now.ToUnixTimeSeconds() }, 
+                    { "@sort", sort }
                 });
             await UpdateSeries(seriesId);
         }
         else
         {
-            if (storedBookNumber.Item1 != null && storedBookNumber.Item1 != bookNumber)
+            if (storedBookNumber.Item1 == null || (storedBookNumber.Item1 != bookNumber && bookNumber != null))
             {
                 log.Debug("Updating the book number to {0} for book {1} in series {2}", bookNumber, bookId, seriesId);
                 await MSU.Execute(
@@ -45,7 +46,20 @@ public class SeriesService
                     {
                         { "@bookId", bookId },
                         { "@seriesId", seriesId },
-                        { "@bookNumber", string.IsNullOrWhiteSpace(bookNumber) ? null : bookNumber.Trim() }
+                        { "@bookNumber", bookNumber.Trim() }
+                    });
+                await UpdateSeries(seriesId);
+            }
+            if (storedBookNumber.Item2 == null || (storedBookNumber.Item2 != sort && sort != null))
+            {
+                log.Debug("Updating the sort to {0} for book {1} in series {2}", sort, bookId, seriesId);
+                await MSU.Execute(
+                    "UPDATE `series_books` SET `sort` = @sort WHERE `book_id` = @bookId AND `series_id` = @seriesId",
+                    new Dictionary<string, object>
+                    {
+                        { "@bookId", bookId },
+                        { "@seriesId", seriesId },
+                        { "@sort", sort }
                     });
                 await UpdateSeries(seriesId);
             }
@@ -78,7 +92,6 @@ public class SeriesService
             Asin = reader.GetString("asin"),
             Name = reader.GetString("name"),
             Link = reader.GetString("link"),
-            Summary = MSU.GetStringOrNull(reader, "summary"),
             LastUpdated = reader.GetInt64("last_updated"),
             LastChecked = MSU.GetInt64OrNull(reader, "last_checked"),
             Created = reader.GetInt64("created"),
@@ -91,27 +104,12 @@ public class SeriesService
         var check = await GetSeriesAsin(asin);
         if (check != null)
         {
-            log.Trace("Series {0} ({1}) already exists", name, asin);
-            if (summary != null && summary.Length > 0 && check.Summary != summary)
-            {
-                log.Debug("Updating summary for series {0} summary", name);
-                await MSU.Execute(
-                    "UPDATE `series` SET `summary` = @summary, `last_updated` = @lastUpdated, `should_download` = @shouldDownload WHERE `id` = @seriesId",
-                    new Dictionary<string, object>
-                    {
-                        { "@summary", summary },
-                        { "@seriesId", check.Id },
-                        { "@lastUpdated", DateTimeOffset.Now.ToUnixTimeSeconds() },
-                        { "@shouldDownload", false }
-                    });
-            }
-
             return check;
         }
 
         log.Info("Creating new series {0} ({1})", name, asin);
         await MSU.Execute(
-            "INSERT INTO `series` (`asin`, `link`, `name`, `last_updated`, `last_checked`, `summary`, `created`, `should_download`) VALUES (@asin, @link, @name, @lastUpdated, @lastChecked, @summary, @created, @shouldDownload)",
+            "INSERT INTO `series` (`asin`, `link`, `name`, `last_updated`, `last_checked`, `created`, `should_download`) VALUES (@asin, @link, @name, @lastUpdated, @lastChecked, @created, @shouldDownload)",
             new Dictionary<string, object>
             {
                 { "@asin", asin },
@@ -119,7 +117,6 @@ public class SeriesService
                 { "@name", name },
                 { "@lastUpdated", DateTimeOffset.Now.ToUnixTimeSeconds() },
                 { "@lastChecked", DateTimeOffset.Now.ToUnixTimeSeconds() },
-                { "@summary", summary },
                 { "@created", DateTimeOffset.Now.ToUnixTimeSeconds() },
                 { "@shouldDownload", true }
             });
