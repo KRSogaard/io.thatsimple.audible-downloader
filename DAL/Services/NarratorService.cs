@@ -1,7 +1,10 @@
-﻿using AudibleDownloader.Utils;
+﻿using AudibleDownloader.DAL.Models;
+using AudibleDownloader.Exceptions;
+using AudibleDownloader.Utils;
 using MySql.Data.MySqlClient;
 using NLog;
 using AudibleDownloader.Models;
+using Microsoft.EntityFrameworkCore;
 
 namespace AudibleDownloader.DAL.Services;
 
@@ -9,110 +12,85 @@ public class NarratorService
 {
     private readonly Logger log = LogManager.GetCurrentClassLogger();
 
-    public Task<List<AudibleNarrator>> getNarratorsForBook(int bookId)
+    public async Task<List<AudibleNarrator>> getNarratorsForBook(int bookId)
     {
-        return MSU.Query(
-            "SELECT n.* FROM `narrators` AS n LEFT JOIN `narrators_books` AS nb ON nb.narrator_id = n.id WHERE nb.book_id = @bookId",
-            new Dictionary<string, object> { { "@bookId", bookId } }, async reader =>
-            {
-                var narrators = new List<AudibleNarrator>();
-
-                while (await reader.ReadAsync()) narrators.Add(ParseNarratorResult(reader));
-
-                return narrators;
-            });
-    }
-
-    private AudibleNarrator ParseNarratorResult(MySqlDataReader reader)
-    {
-        return new AudibleNarrator
+        log.Trace("Getting narrators for book {0}", bookId);
+        using (var context = new AudibleContext())
         {
-            Id = reader.GetInt32("id"),
-            Name = reader.GetString("name"),
-            Created = reader.GetInt32("created")
-        };
+            return await (from n in context.Narrators
+                    join nb in context.NarratorsBooks on n.Id equals nb.NarratorId
+                    where nb.BookId == bookId
+                    select n.ToInternal()).ToListAsync();
+        }
     }
 
     public async Task AddNarratorToBook(int bookId, AudibleNarrator narrator)
     {
-        var exists = await MSU.Query(
-            "SELECT * FROM `narrators_books` WHERE `book_id` = @bookId AND `narrator_id` = @narratorId",
-            new Dictionary<string, object> { { "@bookId", bookId }, { "@narratorId", narrator.Id } },
-            async reader => { return await reader.ReadAsync(); });
-        if (!exists)
+        log.Trace("Adding narrator {0} to book {1}", narrator.Name, bookId);
+        using (var context = new AudibleContext())
         {
-            log.Trace("Adding narrator {0} to book {1}", narrator.Id, bookId);
-            await MSU.Execute(
-                "INSERT INTO `narrators_books` (`book_id`, `narrator_id`, `created`) VALUES (@bookId, @narratorId, @created)",
-                new Dictionary<string, object>
-                {
-                    { "@bookId", bookId }, { "@narratorId", narrator.Id },
-                    { "@created", DateTimeOffset.Now.ToUnixTimeSeconds() }
-                });
-            var mapPart = new IdValueInfo
+            if (await context.NarratorsBooks.AnyAsync(nb => nb.BookId == bookId && nb.NarratorId == narrator.Id))
+            {
+                log.Trace("Narrator {0} already attached to book {1}", narrator.Name, bookId);
+                return;
+            }
+            
+            var book = await context.Books.Where(b => b.Id == bookId).FirstOrDefaultAsync();
+            if (book == null)
+            {
+                log.Error("Book {0} not found", bookId);
+                throw new FatalException("Book not found");
+            }
+            
+            var nb = new NarratorsBook()
+            {
+                BookId = bookId,
+                NarratorId = narrator.Id,
+                Created = DateTimeOffset.Now.ToUnixTimeSeconds()
+            };
+            await context.NarratorsBooks.AddAsync(nb);
+            book.NarratorsCache = (book.NarratorsCache ?? "") + MapUtil.CreateMapPart(new IdValueInfo
             {
                 Id = narrator.Id,
                 Value = narrator.Name
-            };
-            await MSU.Execute(
-                "UPDATE `books` SET `last_updated` = @lastUpdated, `narrators_cache` = concat(ifnull(`narrators_cache`,\"\"), @cache) WHERE `id` = @bookId",
-                new Dictionary<string, object>
-                {
-                    { "@lastUpdated", DateTimeOffset.Now.ToUnixTimeSeconds() },
-                    { "@cache", MapUtil.CreateMapPart(mapPart) }, { "@bookId", bookId }
-                });
-        }
-        else
-        {
-            log.Trace("Narrator {0} already attached to book {1}", narrator.Name, bookId);
+            });
+            book.LastUpdated = DateTimeOffset.Now.ToUnixTimeSeconds();
+            await context.SaveChangesAsync();
         }
     }
 
     public async Task<AudibleNarrator> SaveOrGetNarrator(string narrator)
     {
-        log.Trace("Saving narrator {0}", narrator);
-
         var check = await GetNarratorByName(narrator);
         if (check != null)
         {
-            log.Debug("Narrator {0} already exists", narrator);
+            log.Trace("Narrator {0} already exists", narrator);
             return check;
         }
-
-        log.Info("Saving new narrator {0}", narrator);
-        var time = DateTimeOffset.Now.ToUnixTimeSeconds();
-        return await MSU.QueryWithCommand("INSERT INTO `narrators` (`name`, `created`) VALUES (@name, @created)",
-            new Dictionary<string, object>
+        
+        using (var context = new AudibleContext())
+        {
+            log.Info("Saving new narrator {0}", narrator);
+            var n = new Narrator()
             {
-                { "@name", narrator },
-                { "@created", time }
-            }, async (reader, command) =>
-            {
-                return new AudibleNarrator
-                {
-                    Id = (int)command.LastInsertedId,
-                    Name = narrator,
-                    Created = time
-                };
-            });
+                Name = narrator,
+                Created = DateTimeOffset.Now.ToUnixTimeSeconds()
+            };
+            await context.Narrators.AddAsync(n);
+            await context.SaveChangesAsync();
+            return n.ToInternal();
+        }
     }
 
-    public Task<AudibleNarrator?> GetNarratorByName(string name)
+    public async Task<AudibleNarrator?> GetNarratorByName(string name)
     {
-        log.Trace("Getting narrator by name");
-
-        return MSU.Query("SELECT * FROM `narrators` WHERE `name` = @name",
-            new Dictionary<string, object> { { "@name", name } },
-            async reader =>
-            {
-                if (!await reader.ReadAsync()) return null;
-
-                return new AudibleNarrator
-                {
-                    Id = reader.GetInt32("id"),
-                    Name = reader.GetString("name"),
-                    Created = reader.GetInt32("created")
-                };
-            });
+        log.Trace("Getting narrator by name {0}", name);
+       using (var context = new AudibleContext())
+        {
+            return await context.Narrators
+                .Where(n => n.Name == name)
+                .Select(n => n.ToInternal())
+                .FirstOrDefaultAsync();
+        }
     }
 }

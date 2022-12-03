@@ -23,7 +23,4 @@
         <Content Include="nlog.config" CopyToOutputDirectory="Always" />
         <Content Include="appSettings.json" CopyToOutputDirectory="Always" />
     </ItemGroup>
-    <ItemGroup>
-      <Folder Include="Services\dal" />
-    </ItemGroup>
 </Project>

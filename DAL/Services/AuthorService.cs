@@ -14,6 +14,7 @@ namespace AudibleDownloader.DAL.Services
 
         public async Task<AudibleAuthor?> GetAuthorAsin(string asin)
         {
+            log.Trace("Getting author by asin: {0}", asin);
             Preconditions.CheckNotNullOrEmpty(asin, nameof(asin));
             
             using (var context = new AudibleContext())
@@ -24,6 +25,7 @@ namespace AudibleDownloader.DAL.Services
 
         public async Task<AudibleAuthor?> GetAuthor(int id)
         {
+            log.Trace("Getting author by id: {0}", id);
             using (var context = new AudibleContext())
             {
                 return await context.Authors.Where(a => a.Id == id).Select(a => a.ToInternal()).FirstOrDefaultAsync();
@@ -32,6 +34,7 @@ namespace AudibleDownloader.DAL.Services
 
         public async Task<List<AudibleAuthor>> GetAuthorsForBook(int bookId)
         {
+            log.Trace("Getting authors by book with id: {0}", bookId);
             using (var context = new AudibleContext())
             {
                 return await (from a in context.Authors
@@ -43,6 +46,7 @@ namespace AudibleDownloader.DAL.Services
 
         public async Task<bool> AuthorHasBook(int bookId, int authorId)
         {
+            log.Trace("Checking is author {1} is attached to book {0}", bookId, authorId);
             using (var context = new AudibleContext())
             {
                 return await context.AuthorsBooks
@@ -53,6 +57,7 @@ namespace AudibleDownloader.DAL.Services
         
         public async Task AddBookToAuthor(int bookId, AudibleAuthor author)
         {
+            log.Trace("Adding author {1} to book {0}", bookId, author.Id);
             Preconditions.CheckNotNull(author, nameof(author));
             Preconditions.CheckNotNullOrEmpty(author.Name, "author.Name");
             
@@ -61,6 +66,7 @@ namespace AudibleDownloader.DAL.Services
             {
                 using (var context = new AudibleContext())
                 {
+                    log.Trace("Fetching book dal object for book id {0}", bookId);
                     var book = await context.Books.Where(b => b.Id == bookId).FirstOrDefaultAsync();
                     if (book == null)
                     {
@@ -90,6 +96,7 @@ namespace AudibleDownloader.DAL.Services
 
         public async Task<AudibleAuthor> SaveOrGetAuthor(string? asin, string name, string? link)
         {
+            log.Trace("Saving or getting author {0}", name);
             Preconditions.CheckNotNullOrEmpty(name, nameof(name));
             
             AudibleAuthor? check = null;
@@ -138,6 +145,7 @@ namespace AudibleDownloader.DAL.Services
 
         private async Task<AudibleAuthor?> GetAuthorByName(string name)
         {
+            log.Trace("Getting author by name: {0}", name);
             using (var context = new AudibleContext())
             {
                 return await context.Authors

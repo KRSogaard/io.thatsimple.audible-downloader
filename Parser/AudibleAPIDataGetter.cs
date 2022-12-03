@@ -84,6 +84,16 @@ public class AudibleAPIDataGetter : AudibleDataGetter
             book.Asin = asin;
             book.Title = json.product.title;
 
+            string isbnTry = json.product.isbn;
+            if (isbnTry != null)
+            {
+                if (long.TryParse(isbnTry, out long isbn))
+                {
+                    book.Isbn = isbn;
+                }
+            }
+
+
             DateTimeOffset released = json.product.publication_datetime;
             book.Released = released.ToUnixTimeSeconds();
 
@@ -115,6 +125,8 @@ public class AudibleAPIDataGetter : AudibleDataGetter
                     .Replace("<p>", "").Trim();
                 book.Summary = RegexHelper.Replace("<[^>]*>", "", book.Summary);
             }
+
+            book.Publisher = json.product.publisher_name;
 
             book.Authors = new List<ParseAudioBookPerson>();
             if (json.product.authors != null) {

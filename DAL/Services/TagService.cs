@@ -1,6 +1,9 @@
-﻿using AudibleDownloader.Utils;
+﻿using AudibleDownloader.DAL.Models;
+using AudibleDownloader.Exceptions;
+using AudibleDownloader.Utils;
 using NLog;
 using AudibleDownloader.Models;
+using Microsoft.EntityFrameworkCore;
 
 namespace AudibleDownloader.DAL.Services;
 
@@ -8,62 +11,52 @@ public class TagService
 {
     private readonly Logger log = LogManager.GetCurrentClassLogger();
 
-    public Task<List<AudibleTag>> GetTagsForBook(int bookId)
+    public async Task<List<AudibleTag>> GetTagsForBook(int bookId)
     {
-        return MSU.Query(
-            "SELECT `tags`.* FROM `tags` LEFT JOIN `tags_books` ON `tags_books`.tag_id = `tags`.id WHERE `tags_books`.book_id = @bookId",
-            new Dictionary<string, object> { { "@bookId", bookId } }, async reader =>
-            {
-                var tags = new List<AudibleTag>();
-                while (await reader.ReadAsync())
-                    tags.Add(new AudibleTag
-                    {
-                        Id = reader.GetInt32("id"),
-                        Tag = reader.GetString("tag"),
-                        Created = reader.GetInt64("created")
-                    });
-
-                return tags;
-            });
+        log.Trace($"Geting tags for book {bookId}");
+        using (var context = new AudibleContext())
+        {
+            return await (from t in context.Tags
+                    join bt in context.TagsBooks on t.Id equals bt.TagId
+                    where bt.BookId == bookId
+                    select t.ToInternal()).ToListAsync();
+        }
     }
 
-    public async Task AddTagToBook(int bookId, AudibleTag savedTag)
+    public async Task AddTagToBook(int bookId, AudibleTag tag)
     {
-        var check = await MSU.Query("SELECT * FROM `tags_books` WHERE `book_id` = @bookId AND `tag_id` = @tagId",
-            new Dictionary<string, object>
-            {
-                { "@bookId", bookId },
-                { "@tagId", savedTag.Id }
-            }, async reader => { return await reader.ReadAsync(); });
-        if (check)
+        log.Trace($"Adding tag {tag.Tag} to book {bookId}");
+        using (var context = new AudibleContext())
         {
-            log.Trace("Tag {0} already exists for book {1}", savedTag.Tag, bookId);
-            return;
+            var check = await context.TagsBooks.AnyAsync(tb => tb.BookId == bookId && tb.TagId == tag.Id);
+            if (check)
+            {
+                log.Debug($"Tag {tag.Tag} already exists for book {bookId}");
+                return;
+            }
+
+            var book = await context.Books.Where(b => b.Id == bookId).FirstOrDefaultAsync();
+            if (book == null)
+            {
+                log.Error("Unable to find book with id {0}", bookId);
+                throw new FatalException("Unable to find book");
+            }
+            
+            var tagBook = new TagsBook()
+            {
+                BookId = bookId,
+                TagId = tag.Id,
+                Created = DateTimeOffset.Now.ToUnixTimeSeconds()
+            };
+            await context.TagsBooks.AddAsync(tagBook);
+            book.LastUpdated = DateTimeOffset.Now.ToUnixTimeSeconds();
+            book.TagsCache = (book.TagsCache ?? "") + MapUtil.CreateMapPart(new IdValueInfo()
+            {
+                Id = tag.Id,
+                Value = tag.Tag
+            });
+            await context.SaveChangesAsync();
         }
-
-        log.Trace("Adding tag {0} to book {1}", savedTag.Tag, bookId);
-        await MSU.Execute(
-            "INSERT INTO `tags_books` (`book_id`, `tag_id`, `created`) VALUES (@bookId, @tagId, @created)",
-            new Dictionary<string, object>
-            {
-                { "@bookId", bookId },
-                { "@tagId", savedTag.Id },
-                { "@created", DateTimeOffset.Now.ToUnixTimeSeconds() }
-            });
-
-        var mapPart = new IdValueInfo
-        {
-            Id = savedTag.Id,
-            Value = savedTag.Tag
-        };
-        await MSU.Execute(
-            "UPDATE `books` SET `last_updated` = @lastUpdated, `tags_cache` = concat(ifnull(`tags_cache`,\"\"), @cache) WHERE `id` = @id",
-            new Dictionary<string, object>
-            {
-                { "@id", bookId },
-                { "@lastUpdated", DateTimeOffset.Now.ToUnixTimeSeconds() },
-                { "@cache", MapUtil.CreateMapPart(mapPart) }
-            });
     }
 
     public async Task<AudibleTag> SaveOrGetTag(string tag)
@@ -76,37 +69,27 @@ public class TagService
         }
 
         log.Info("Creating new tag {0}", tag);
-        var time = DateTimeOffset.Now.ToUnixTimeSeconds();
-        return await MSU.QueryWithCommand("INSERT INTO `tags` (`tag`, `created`) VALUES (@tag, @created)",
-            new Dictionary<string, object>
+        using (var context = new AudibleContext())
+        {
+            var newTag = new Tag()
             {
-                { "@tag", tag },
-                { "@created", time }
-            }, async (reader, cmd) =>
-            {
-                return new AudibleTag
-                {
-                    Id = (int)cmd.LastInsertedId,
-                    Tag = tag,
-                    Created = time
-                };
-            });
+                Name = tag,
+                Created = DateTimeOffset.Now.ToUnixTimeSeconds()
+            };
+            await context.Tags.AddAsync(newTag);
+            await context.SaveChangesAsync();
+            return newTag.ToInternal();    
+        }
     }
 
-    private Task<AudibleTag?> GetTagByName(string tag)
+    private async Task<AudibleTag?> GetTagByName(string tag)
     {
-        return MSU.Query("SELECT * FROM `tags` WHERE `tag` = @tag",
-            new Dictionary<string, object> { { "@tag", tag } }, async reader =>
-            {
-                if (await reader.ReadAsync())
-                    return new AudibleTag
-                    {
-                        Id = reader.GetInt32("id"),
-                        Tag = reader.GetString("tag"),
-                        Created = reader.GetInt64("created")
-                    };
-
-                return null;
-            });
+        log.Trace("Getting tag by name {0}", tag);
+        using (var context = new AudibleContext())
+        {
+            return await context.Tags
+                .Where(t => t.Name == tag).Select(t => t.ToInternal())
+                .FirstOrDefaultAsync();
+        }
     }
 }

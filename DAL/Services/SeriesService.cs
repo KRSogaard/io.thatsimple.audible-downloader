@@ -1,7 +1,9 @@
-﻿using AudibleDownloader.Utils;
+﻿using AudibleDownloader.DAL.Models;
+using AudibleDownloader.Utils;
 using MySql.Data.MySqlClient;
 using NLog;
 using AudibleDownloader.Models;
+using Microsoft.EntityFrameworkCore;
 
 namespace AudibleDownloader.DAL.Services;
 
@@ -11,149 +13,175 @@ public class SeriesService
 
     public async Task AddBookToSeries(int bookId, int seriesId, string? bookNumber, int? sort)
     {
-        var storedBookNumber = await MSU.Query(
-            "SELECT * FROM `series_books` WHERE `book_id` = @bookId AND `series_id` = @seriesId",
-            new Dictionary<string, object> { { "@bookId", bookId }, { "@seriesId", seriesId } }, async reader =>
-            {
-                if (!await reader.ReadAsync())
-                    return null;
-                return new Tuple<string?, int?>(MSU.GetStringOrNull(reader, "book_number"), MSU.GetInt32OrNull(reader, "sort"));
-            });
-
-        if (storedBookNumber == null)
+        log.Trace($"Adding book {bookId} to series {seriesId} with book number {bookNumber} and sort {sort}");
+        using (var context = new AudibleContext())
         {
-            log.Trace("Adding book {0} to series {1} with book number {2}", bookId, seriesId, bookNumber);
-            await MSU.Execute(
-                "INSERT INTO `series_books` (`book_id`, `series_id`, `book_number`, `sort`, `created`) VALUES (@bookId, @seriesId, @bookNumber, @sort, @created)",
-                new Dictionary<string, object>
+            var seriesBook = context.SeriesBooks.Where(sb => sb.BookId == bookId && sb.SeriesId == seriesId).FirstOrDefault();
+            if (seriesBook != null)
+            {
+                bool changes = false;
+                if (seriesBook.BookNumber != bookNumber && !string.IsNullOrEmpty(bookNumber))
                 {
-                    { "@bookId", bookId },
-                    { "@seriesId", seriesId },
-                    { "@bookNumber", string.IsNullOrWhiteSpace(bookNumber) ? null : bookNumber.Trim() },
-                    { "@created", DateTimeOffset.Now.ToUnixTimeSeconds() }, 
-                    { "@sort", sort }
-                });
-            await UpdateSeries(seriesId);
-        }
-        else
-        {
-            if (storedBookNumber.Item1 == null || (storedBookNumber.Item1 != bookNumber && bookNumber != null))
-            {
-                log.Debug("Updating the book number to {0} for book {1} in series {2}", bookNumber, bookId, seriesId);
-                await MSU.Execute(
-                    "UPDATE `series_books` SET `book_number` = @bookNumber WHERE `book_id` = @bookId AND `series_id` = @seriesId",
-                    new Dictionary<string, object>
-                    {
-                        { "@bookId", bookId },
-                        { "@seriesId", seriesId },
-                        { "@bookNumber", bookNumber.Trim() }
-                    });
-                await UpdateSeries(seriesId);
+                    seriesBook.BookNumber = bookNumber;
+                    changes = true;
+                }
+                if (seriesBook.Sort != sort && sort != null)
+                {
+                    seriesBook.Sort = sort;
+                    changes = true;
+                }
+                if (changes)
+                {
+                    await context.SaveChangesAsync();
+                }
+                return;
             }
-            if (storedBookNumber.Item2 == null || (storedBookNumber.Item2 != sort && sort != null))
+            
+            seriesBook = new SeriesBook()
             {
-                log.Debug("Updating the sort to {0} for book {1} in series {2}", sort, bookId, seriesId);
-                await MSU.Execute(
-                    "UPDATE `series_books` SET `sort` = @sort WHERE `book_id` = @bookId AND `series_id` = @seriesId",
-                    new Dictionary<string, object>
-                    {
-                        { "@bookId", bookId },
-                        { "@seriesId", seriesId },
-                        { "@sort", sort }
-                    });
-                await UpdateSeries(seriesId);
-            }
+                BookId = bookId,
+                SeriesId = seriesId,
+                BookNumber = string.IsNullOrWhiteSpace(bookNumber) ? null : bookNumber.Trim(),
+                Sort = sort,
+                Created = DateTimeOffset.Now.ToUnixTimeSeconds()
+            };
+            await context.SeriesBooks.AddAsync(seriesBook);
+            await context.SaveChangesAsync();
         }
     }
 
-    private Task UpdateSeries(int seriesId)
+    public async Task<AudibleSeries?> GetSeriesAsin(string seriesAsin)
     {
-        return MSU.Execute("UPDATE `series` SET `last_updated` = @lastUpdated WHERE `id` = @seriesId",
-            new Dictionary<string, object>
-                { { "@lastUpdated", DateTimeOffset.Now.ToUnixTimeSeconds() }, { "@seriesId", seriesId } });
-    }
-
-    public Task<AudibleSeries?> GetSeriesAsin(string seriesAsin)
-    {
-        return MSU.Query("SELECT * FROM `series` WHERE `series`.asin = @asin",
-            new Dictionary<string, object> { { "@asin", seriesAsin } }, async reader =>
-            {
-                if (!await reader.ReadAsync())
-                    return null;
-                return ParseSeriesReader(reader);
-            });
-    }
-
-    private AudibleSeries ParseSeriesReader(MySqlDataReader reader)
-    {
-        return new AudibleSeries
+        log.Trace($"Getting series by asin {seriesAsin}");
+        using (var context = new AudibleContext())
         {
-            Id = reader.GetInt32("id"),
-            Asin = reader.GetString("asin"),
-            Name = reader.GetString("name"),
-            Link = reader.GetString("link"),
-            LastUpdated = reader.GetInt64("last_updated"),
-            LastChecked = MSU.GetInt64OrNull(reader, "last_checked"),
-            Created = reader.GetInt64("created"),
-            ShouldDownload = MSU.GetInt32OrNull(reader, "should_download") == 1
-        };
+            return await context.Series.Where(s => s.Asin == seriesAsin).Select(s => s.ToInternal())
+                .FirstOrDefaultAsync();
+        }
     }
 
-    public async Task<AudibleSeries> SaveOrGetSeries(string asin, string name, string link, string? summary)
+    public async Task<AudibleSeries> SaveOrGetSeries(string asin, string name, string link)
     {
+        log.Trace($"Saving or getting series {asin} name {name}");
         var check = await GetSeriesAsin(asin);
         if (check != null)
         {
             return check;
         }
-
-        log.Info("Creating new series {0} ({1})", name, asin);
-        await MSU.Execute(
-            "INSERT INTO `series` (`asin`, `link`, `name`, `last_updated`, `last_checked`, `created`, `should_download`) VALUES (@asin, @link, @name, @lastUpdated, @lastChecked, @created, @shouldDownload)",
-            new Dictionary<string, object>
+        
+        using (var context = new AudibleContext())
+        {
+            var series = new Series()
             {
-                { "@asin", asin },
-                { "@link", link },
-                { "@name", name },
-                { "@lastUpdated", DateTimeOffset.Now.ToUnixTimeSeconds() },
-                { "@lastChecked", DateTimeOffset.Now.ToUnixTimeSeconds() },
-                { "@created", DateTimeOffset.Now.ToUnixTimeSeconds() },
-                { "@shouldDownload", true }
-            });
-        return await GetSeriesAsin(asin);
+                Asin = asin,
+                Name = name,
+                Link = link,
+                Created = DateTimeOffset.Now.ToUnixTimeSeconds(),
+                LastUpdated = DateTimeOffset.Now.ToUnixTimeSeconds(),
+                LastChecked = DateTimeOffset.Now.ToUnixTimeSeconds(),
+                ShouldDownload = true,
+            };
+            await context.Series.AddAsync(series);
+            await context.SaveChangesAsync();
+            return series.ToInternal();
+        }
     }
 
-    public Task SetSeriesShouldDownload(int id, bool v)
+    public async Task SetSeriesShouldDownload(int id, bool shouldDownload)
     {
-        return MSU.Execute("UPDATE `series` SET `should_download` = @download WHERE `id` = @id",
-            new Dictionary<string, object> { { "@download", v }, { "@id", id } });
-    }
-
-    public Task UpdateBookNumber(int bookId, int seriesId, string bookNumber)
-    {
-        return MSU.Execute(
-            "UPDATE `series_books` SET `book_number` = @bookNumber WHERE `book_id` = @bookId AND `series_id` = @seriesId",
-            new Dictionary<string, object>
-                { { "@bookNumber", bookNumber }, { "@bookId", bookId }, { "@seriesId", seriesId } });
-    }
-
-    public Task<List<AudibleSeries>> GetSeriesToRefresh()
-    {
-        return MSU.Query("SELECT * FROM `series` WHERE `last_checked` < @lastChecked OR `last_checked`IS NULL",
-            new Dictionary<string, object> { { "@lastChecked", DateTimeOffset.Now.AddDays(-7).ToUnixTimeSeconds() } },
-            async reader =>
+        log.Trace($"Setting series {id} should download to {shouldDownload}");
+        using (var context = new AudibleContext())
+        {
+            var series = await context.Series.Where(s => s.Id == id).FirstOrDefaultAsync();
+            if (series == null)
             {
-                var series = new List<AudibleSeries>();
-                while (await reader.ReadAsync()) series.Add(ParseSeriesReader(reader));
-
-                return series;
-            });
+                log.Warn("Series {0} not found, can't update should download", id);
+                return;
+            }
+            series.ShouldDownload = shouldDownload;
+            await context.SaveChangesAsync();
+        }
     }
 
-    public Task SetSeriesChecked(int seriesId)
+    public async Task<List<AudibleSeries>> GetSeriesToRefresh()
     {
-        return MSU.Execute("UPDATE `series` SET `last_checked` = @lastChecked WHERE `id` = @id",
-            new Dictionary<string, object>
-                { { "@lastChecked", DateTimeOffset.Now.ToUnixTimeSeconds() }, { "@id", seriesId } });
+        log.Trace("Getting series to be refresh");
+        using (var context = new AudibleContext())
+        {
+            long beforeChecked = DateTimeOffset.Now.AddDays(-7).ToUnixTimeSeconds();
+            return await context.Series
+                .Where(s => s.LastChecked < beforeChecked)
+                .Select(s => s.ToInternal())
+                .ToListAsync();
+        }
+    }
+
+    public async Task SetSeriesChecked(int seriesId)
+    {
+        log.Trace($"Setting series {seriesId} checked");
+        using (var context = new AudibleContext())
+        {
+            var series = await context.Series.Where(s => s.Id == seriesId).FirstOrDefaultAsync();
+            if (series == null)
+            {
+                log.Warn("Series {0} not found, can't update last checked", seriesId);
+                return;
+            }
+            series.LastChecked = DateTimeOffset.Now.ToUnixTimeSeconds();
+            await context.SaveChangesAsync();
+        }
+    }
+
+    public async Task<List<AudibleSeries>> GetSeriesForBook(int bookId)
+    {
+        log.Trace($"Getting all series for book {bookId}");
+        using (var context = new AudibleContext())
+        {
+            return await (from s in context.Series
+                join sb in context.SeriesBooks on s.Id equals sb.SeriesId
+                where sb.BookId == bookId
+                select s.ToInternal()).ToListAsync();
+        }
+    }
+
+    public async Task<bool> IsBookInSeriesByAsin(int bookId, string seriesAsin)
+    {
+        using (var context = new AudibleContext())
+        {
+            return await (from s in context.Series
+                join sb in context.SeriesBooks on s.Id equals sb.SeriesId
+                where sb.BookId == bookId && s.Asin == seriesAsin
+                select s).AnyAsync();
+        }
+    }
+
+    public async Task UpdateSeriesBookData(int bookId, int seriesId, string? bookBookNumber, int? bookSort)
+    {
+        log.Trace("Updating series book data for book {0} series {1} book number {2} sort {3}", bookId, seriesId, bookBookNumber, bookSort);
+        using (var context = new AudibleContext())
+        {
+            var current = await context.SeriesBooks.Where(sb => sb.BookId == bookId && sb.SeriesId == seriesId).FirstOrDefaultAsync();
+            if (current == null)
+            {
+                log.Warn("Series book {0} {1} not found, can't update", bookId, seriesId);
+                return;
+            }
+            
+            bool changes = false;
+            if (current.BookNumber != bookBookNumber && bookBookNumber != null)
+            {
+                current.BookNumber = bookBookNumber;
+                changes = true;
+            }
+            if (current.Sort != bookSort && bookSort != null)
+            {
+                current.Sort = bookSort;
+                changes = true;
+            }
+            if (changes)
+            {
+                await context.SaveChangesAsync();
+            }
+        }
     }
 }

@@ -1,6 +1,9 @@
-﻿using AudibleDownloader.Utils;
+﻿using AudibleDownloader.DAL.Models;
+using AudibleDownloader.Exceptions;
+using AudibleDownloader.Utils;
 using NLog;
 using AudibleDownloader.Models;
+using Microsoft.EntityFrameworkCore;
 
 namespace AudibleDownloader.DAL.Services;
 
@@ -8,57 +11,50 @@ public class CategoryService
 {
     private readonly Logger log = LogManager.GetCurrentClassLogger();
 
-    public Task<List<AudibleCategory>> getCategoriesForBook(int bookId)
+    public async Task<List<AudibleCategory>> getCategoriesForBook(int bookId)
     {
-        return MSU.Query(
-            "SELECT `categories`.* FROM `categories` LEFT JOIN `categories_books` ON `categories_books`.category_id = `categories`.id WHERE `categories_books`.book_id = @bookId",
-            new Dictionary<string, object> { { "@bookId", bookId } }, async reader =>
-            {
-                var categories = new List<AudibleCategory>();
-                while (await reader.ReadAsync())
-                    categories.Add(new AudibleCategory
-                    {
-                        Id = reader.GetInt32("id"),
-                        Name = reader.GetString("name"),
-                        Link = reader.GetString("link"),
-                        Created = reader.GetInt32("created")
-                    });
-                return categories;
-            });
+        log.Trace($"Getting all categories for book: {bookId}");
+        using (var context = new AudibleContext())
+        {
+            return await (from c in context.Categories
+                    join cb in context.CategoriesBooks on c.Id equals cb.CategoryId
+                    where cb.BookId == bookId
+                    select c.ToInternal()).ToListAsync();
+        }
     }
 
     public async Task AddCategoryToBook(int bookId, AudibleCategory category)
     {
-        var exists = await MSU.Query(
-            "SELECT * FROM `categories_books` WHERE `book_id` = @bookId AND `category_id` = @catId",
-            new Dictionary<string, object> { { "@bookId", bookId }, { "@catId", category.Id } },
-            async reader => { return await reader.ReadAsync(); });
-        if (!exists)
+        log.Trace($"Adding category {category.Name} to book: {bookId}");
+        using (var context = new AudibleContext())
         {
-            log.Trace("Adding category {0} to book {1}", category.Id, bookId);
-            await MSU.Execute(
-                "INSERT INTO `categories_books` (`book_id`, `category_id`, `created`) VALUES (@bookId, @categoryId, @created)",
-                new Dictionary<string, object>
-                {
-                    { "@bookId", bookId }, { "@categoryId", category.Id },
-                    { "@created", DateTimeOffset.Now.ToUnixTimeSeconds() }
-                });
-            var mapPart = new IdValueInfo
+            if (await context.CategoriesBooks.AnyAsync(cb => cb.BookId == bookId && cb.CategoryId == category.Id))
+            {
+                log.Trace($"Category {category.Name} already exists for book {bookId}");
+                return;
+            }
+            
+            var book = await context.Books.Where(b => b.Id == bookId).FirstOrDefaultAsync();
+            if (book == null)
+            {
+                log.Error("Unable to find book with id {0}", bookId);
+                throw new FatalException("Unable to find book");
+            }
+
+            var cb = new CategoriesBook()
+            {
+                BookId = bookId,
+                CategoryId = category.Id,
+                Created = DateTimeOffset.Now.ToUnixTimeSeconds()
+            };
+            await context.CategoriesBooks.AddAsync(cb);
+            book.LastUpdated = DateTimeOffset.Now.ToUnixTimeSeconds();
+            book.CategoriesCache = (book.CategoriesCache ?? "") + MapUtil.CreateMapPart(new IdValueInfo()
             {
                 Id = category.Id,
                 Value = category.Name
-            };
-            await MSU.Execute(
-                "UPDATE `books` SET `last_updated` = @lastUpdated, `categories_cache` = concat(ifnull(`categories_cache`,\"\"), @cache) WHERE `id` = @bookId",
-                new Dictionary<string, object>
-                {
-                    { "@lastUpdated", DateTimeOffset.Now.ToUnixTimeSeconds() },
-                    { "@cache", MapUtil.CreateMapPart(mapPart) }, { "@bookId", bookId }
-                });
-        }
-        else
-        {
-            log.Trace("Category {0} already attached to book {1}", category.Name, bookId);
+            });
+            await context.SaveChangesAsync();
         }
     }
 
@@ -73,38 +69,30 @@ public class CategoryService
         }
 
         log.Info("Saving new category {0}", name);
-        var created = DateTimeOffset.Now.ToUnixTimeSeconds();
-        return await MSU.QueryWithCommand(
-            "INSERT INTO `categories` (`name`, `link`, `created`) VALUES (@name, @link, @created)",
-            new Dictionary<string, object> { { "@name", name }, { "@link", link }, { "@created", created } },
-            async (reader, cmd) =>
+        using (var context = new AudibleContext())
+        {
+            var category = new Category()
             {
-                return new AudibleCategory
-                {
-                    Id = (int)cmd.LastInsertedId,
-                    Name = name,
-                    Link = link,
-                    Created = created
-                };
-            });
+                Name = name,
+                Link = link,
+                Created = DateTimeOffset.Now.ToUnixTimeSeconds()
+            };
+            await context.Categories.AddAsync(category);
+            await context.SaveChangesAsync();
+            return category.ToInternal();
+        }
     }
 
-    public Task<AudibleCategory?> GetGategoryByName(string name)
+    public async Task<AudibleCategory?> GetGategoryByName(string name)
     {
         log.Trace("Getting category by name: {0}", name);
 
-        return MSU.Query("SELECT * FROM `categories` WHERE `name` = @name",
-            new Dictionary<string, object> { { "@name", name } }, async reader =>
-            {
-                if (await reader.ReadAsync())
-                    return new AudibleCategory
-                    {
-                        Id = reader.GetInt32("id"),
-                        Name = reader.GetString("name"),
-                        Link = reader.GetString("link"),
-                        Created = reader.GetInt32("created")
-                    };
-                return null;
-            });
+        using (var context = new AudibleContext())
+        {
+            return await context.Categories
+                .Where(c => c.Name == name)
+                .Select(c => c.ToInternal())
+                .FirstOrDefaultAsync();
+        }
     }
 }

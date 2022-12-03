@@ -7,6 +7,7 @@ public class ParseAudioBook
     [JsonPropertyName("title")] public string Title { get; set; }
 
     [JsonPropertyName("asin")] public string Asin { get; set; }
+    [JsonPropertyName("isbn")] public long? Isbn { get; set; }
 
     [JsonPropertyName("released")] public long Released { get; set; }
 
@@ -14,7 +15,9 @@ public class ParseAudioBook
 
     [JsonPropertyName("image")] public string Image { get; set; }
 
-    [JsonPropertyName("subtitle")] public string Subtitle { get; set; }
+    [JsonPropertyName("subtitle")] public string? Subtitle { get; set; }
+    
+    [JsonPropertyName("subtitle")] public string? Publisher { get; set; }
 
     [JsonPropertyName("authors")] public List<ParseAudioBookPerson> Authors { get; set; }
 
@@ -51,8 +54,6 @@ public class ParseAudioBookSeries
     [JsonPropertyName("bookNumber")] public string? BookNumber { get; set; }
 
     [JsonPropertyName("bookNumber")] public int? Sort { get; set; }
-
-    [JsonPropertyName("summary")] public string? Summary { get; set; }
 }
 
 public class ParseAudioBookCategory

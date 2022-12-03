@@ -1,178 +1,120 @@
-﻿using AudibleDownloader.Utils;
+﻿using AudibleDownloader.DAL.Models;
+using AudibleDownloader.Utils;
 using MySql.Data.MySqlClient;
 using NLog;
 using AudibleDownloader.Models;
+using Microsoft.EntityFrameworkCore;
 
 namespace AudibleDownloader.DAL.Services;
 
 public class BookService
 {
-    private readonly AuthorService authorService;
-    private readonly CategoryService categoryService;
     private readonly Logger log = LogManager.GetCurrentClassLogger();
-    private readonly NarratorService narratorService;
-    private readonly TagService tagService;
 
-    public BookService(AuthorService authorService, NarratorService narratorService, CategoryService categoryService,
-        TagService tagService)
+    public async Task<AudibleBook?> getBookASIN(string asin)
     {
-        this.authorService = authorService;
-        this.narratorService = narratorService;
-        this.categoryService = categoryService;
-        this.tagService = tagService;
-    }
-
-    public Task<AudibleBook?> getBookASIN(string asin)
-    {
-        return MSU.Query("SELECT * FROM `books` WHERE `asin` = @asin",
-            new Dictionary<string, object> { { "@asin", asin } },
-            async reader =>
-            {
-                if (reader != null && await reader.ReadAsync()) return await ParseBookResult(reader, true);
-                return null;
-            });
+        log.Trace("Getting book by asin: {0}", asin);
+        using (var context = new AudibleContext())
+        {
+            return await context.Books
+                .Where(b => b.Asin == asin)
+                .Select(b => b.ToInternal())
+                .FirstOrDefaultAsync();
+        }
     }
 
     public async Task<AudibleBook?> getBook(int id)
     {
-        return await MSU.Query("SELECT * FROM `books` WHERE `id` = @id",
-            new Dictionary<string, object> { { "@id", id } },
-            async reader =>
-            {
-                if (reader != null && await reader.ReadAsync()) return await ParseBookResult(reader, true);
-                return null;
-            });
-    }
-
-    private async Task<AudibleBook> ParseBookResult(MySqlDataReader reader, bool getSeries = false)
-    {
-        var bookId = reader.GetInt32("id");
-
-        var series = new List<SimpleSeries>();
-        if (getSeries) series = await getSimpleSeriesForBook(bookId);
-
-        var authors = await authorService.GetAuthorsForBook(bookId);
-        var tags = await tagService.GetTagsForBook(bookId);
-        var narrators = await narratorService.getNarratorsForBook(bookId);
-        var categories = await categoryService.getCategoriesForBook(bookId);
-
-        return new AudibleBook
+        log.Trace("Getting book by id: {0}", id);
+        using (var context = new AudibleContext())
         {
-            Id = bookId,
-            Asin = reader.GetString("asin"),
-            Link = MSU.GetStringOrNull(reader, "link"),
-            Title = MSU.GetStringOrNull(reader, "title"),
-            Length = MSU.GetInt32OrNull(reader, "length"),
-            Released = MSU.GetInt64OrNull(reader, "released"),
-            Summary = MSU.GetStringOrNull(reader, "summary"),
-            LastUpdated = MSU.GetInt64OrNull(reader, "last_updated"),
-            Series = series,
-            Authors = authors,
-            Tags = tags,
-            Narrators = narrators,
-            Categories = categories,
-            ShouldDownload = MSU.GetInt32OrNull(reader, "should_download") == 1,
-            IsTemp = MSU.GetInt32OrNull(reader, "is_temp") == 1,
-        };
+            return await context.Books
+                .Where(b => b.Id == id)
+                .Select(b => b.ToInternal())
+                .FirstOrDefaultAsync();
+        }
     }
 
-    private async Task<List<SimpleSeries>> getSimpleSeriesForBook(int bookId)
-    {
-        return await MSU.Query("SELECT `series`.*, `series_books`.book_number FROM `series` " +
-                               "LEFT JOIN `series_books` ON `series_books`.series_id = `series`.id " +
-                               "WHERE `series_books`.book_id = @id",
-            new Dictionary<string, object> { { "@id", bookId } },
-            async reader =>
-            {
-                var series = new List<SimpleSeries>();
-                while (await reader.ReadAsync())
-                    series.Add(new SimpleSeries
-                    {
-                        Id = reader.GetInt32("id"),
-                        Asin = reader.GetString("asin"),
-                        Link = reader.GetString("link"),
-                        Name = reader.GetString("name"),
-                        BookNumber = MSU.GetStringOrNull(reader, "book_number")
-                    });
-                return series;
-            });
-    }
-
-    public async Task<AudibleBook> SaveBook(string asin, string link, string title, int runtime, long released,
-        string summary)
+    public async Task<AudibleBook> SaveBook(string asin, long? isbn, string link, string title, int? runtime, long? released,
+        string? summary, int? publisherId)
     {
         log.Trace("Saving book {0}", title);
-        var checkBook = await getBookASIN(asin);
-        var bookId = 0;
 
-        if (checkBook != null)
+        using (var context = new AudibleContext())
         {
-            log.Debug("Book {0} already exists updating", title);
-            await MSU.Execute(
-                "UPDATE `books` SET `link` = @link, `title` = @title, `length` = @length, `released` = @released, `summary` = @summary, `last_updated` = @lastUpdated, `should_download` = @shouldDownload, `is_temp` = @isTemp WHERE `asin` = @asin",
-                new Dictionary<string, object>
-                {
-                    { "@link", link }, { "@title", title }, { "@length", runtime }, { "@released", released },
-                    { "@summary", summary }, { "@lastUpdated", (int)DateTimeOffset.Now.ToUnixTimeSeconds() },
-                    { "@asin", asin }, { "@shouldDownload", false }, { "@isTemp", false }
-                });
-            bookId = checkBook.Id;
-        }
-        else
-        {
-            log.Info("Book {0} does not exist, creating", title);
-            bookId = await MSU.QueryWithCommand(
-                "INSERT INTO `books` (`asin`, `link`, `title`, `length`, `released`, `summary`, `last_updated`, `created`, `should_download`, `is_temp`) VALUES (@asin, @link, @title, @length, @released, @summary, @created, @created, @shouldDownload, @isTemp)",
-                new Dictionary<string, object>
-                {
-                    { "@asin", asin }, 
-                    { "@link", link }, 
-                    { "@title", title }, 
-                    { "@length", runtime },
-                    { "@released", released }, 
-                    { "@summary", summary },
-                    { "@shouldDownload", false },
-                    { "@created", (int)DateTimeOffset.Now.ToUnixTimeSeconds() },
-                    { "@isTemp", false }
-                },
-                async (reader, cmd) => { return (int)cmd.LastInsertedId; });
-        }
+            var book = await context.Books
+                .Where(b => b.Asin == asin)
+                .FirstOrDefaultAsync();
 
-        if (bookId == 0)
-        {
-            log.Error("Failed to save book {0}", title);
-            throw new Exception("Failed to save book");
-        }
+            if (book != null)
+            {
+                log.Debug("Book {0} already exists updating", title);
+                book.Link = link;
+                book.Isbn = isbn;
+                book.Title = title;
+                book.Length = runtime;
+                book.Released = released;
+                book.Summary = summary;
+                book.PublisherId = publisherId;
+                book.LastUpdated = DateTimeOffset.Now.ToUnixTimeSeconds();
+                book.ShouldDownload = false;
+                book.IsTemp = false;
+                await context.SaveChangesAsync();
+                return book.ToInternal();
+            }
 
-        return await getBook(bookId);
+            book = new Book()
+            {
+                Asin = asin,
+                Link = link,
+                Isbn = isbn,
+                Title = title,
+                Length = runtime,
+                Released = released,
+                Summary = summary,
+                PublisherId = publisherId,
+                Created = DateTimeOffset.Now.ToUnixTimeSeconds(),
+                LastUpdated = DateTimeOffset.Now.ToUnixTimeSeconds(),
+                ShouldDownload = false,
+                IsTemp = false
+            };
+            await context.Books.AddAsync(book);
+            await context.SaveChangesAsync();
+            return book.ToInternal();
+        }
     }
 
-    public Task<int> CreateTempBook(string asin)
+    public async Task<AudibleBook> CreateTempBook(string asin)
     {
         log.Debug("Creating temp book with asin {0}", asin);
-        return MSU.QueryWithCommand(
-            "INSERT INTO `books` (`asin`, `title`, `created`, `last_updated`, `should_download`, `is_temp`) VALUES (@asin, @title, @created, @created, @shouldDownload, @isTemp)",
-            new Dictionary<string, object>
+        using (var context = new AudibleContext())
+        {
+            var book = new Book()
             {
-                { "@asin", asin },
-                { "@title", "Pending Download" },
-                { "@created", (int)DateTimeOffset.Now.ToUnixTimeSeconds() },
-                { "@shouldDownload", true },
-                { "@isTemp", true }
-            },
-            async (reader, cmd) => { return (int)cmd.LastInsertedId; }
-        );
+                Asin = asin,
+                Title = "Pending Download",
+                Created = DateTimeOffset.Now.ToUnixTimeSeconds(),
+                LastUpdated = DateTimeOffset.Now.ToUnixTimeSeconds(),
+                ShouldDownload = true,
+                IsTemp = true
+            };
+            await context.Books.AddAsync(book);
+            await context.SaveChangesAsync();
+            return book.ToInternal();
+        }
     }
 
-    public Task DeleteBookAsin(string asin)
+    public async Task DeleteBookAsin(string asin)
     {
         log.Debug("Deleting book with asin {0}", asin);
-        return MSU.Execute(
-            "DELETE FROM `books` WHERE `asin` = @asin",
-            new Dictionary<string, object>
+        using (var context = new AudibleContext())
+        {
+            var book = await context.Books.Where(b => b.Asin == asin).FirstOrDefaultAsync();
+            if (book != null)
             {
-                { "@asin", asin },
+                context.Books.Remove(book);
+                await context.SaveChangesAsync();
             }
-        );
+        }
     }
 }

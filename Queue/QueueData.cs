@@ -21,7 +21,7 @@ public class MessageData
 
     [JsonPropertyName("jobId")] public int? JobId { get; set; }
 
-    [JsonPropertyName("userId")] public string? UserId { get; set; }
+    [JsonPropertyName("userId")] public int? UserId { get; set; }
 
     [JsonPropertyName("addToUser")] public bool AddToUser { get; set; }
 

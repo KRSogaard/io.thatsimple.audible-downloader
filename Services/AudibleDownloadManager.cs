@@ -24,10 +24,11 @@ public class AudibleDownloadManager
     private readonly StorageService storageService;
     private readonly TagService tagService;
     private readonly UserService userService;
+    private readonly PublisherService publisherService;
     private readonly AudibleDataGetter dataGetter;
 
     public AudibleDownloadManager(BookService bookService, AuthorService authorService, NarratorService narratorService,
-        CategoryService categoryService, TagService tagService, SeriesService seriesService, UserService userService,
+        CategoryService categoryService, TagService tagService, SeriesService seriesService, UserService userService, PublisherService publisherService,
         StorageService storageService, DownloadService downloadService, DownloadQueue downloadQueue, AudibleDataGetter dataGetter)
     {
         this.bookService = bookService;
@@ -37,13 +38,14 @@ public class AudibleDownloadManager
         this.tagService = tagService;
         this.seriesService = seriesService;
         this.userService = userService;
+        this.publisherService = publisherService;
         this.storageService = storageService;
         this.downloadService = downloadService;
         this.downloadQueue = downloadQueue;
         this.dataGetter = dataGetter;
     }
 
-    public async Task DownloadBook(string asin, string? userId = null, bool addToUser = false, bool force = false)
+    public async Task DownloadBook(string asin, int? userId = null, bool addToUser = false, bool force = false)
     {
         try
         {
@@ -75,9 +77,14 @@ public class AudibleDownloadManager
             }
 
             if (userId != null && addToUser)
-                await userService.AddBookToUser(userId, bookId);
+            {
+                await userService.AddBookToUser((int)userId, bookId);
+            }
             else
+            {
                 log.Debug("No user id provided, not adding book to user");
+            }
+
             log.Debug("Finished downloading book " + asin);
         }
         catch (FatalException e)
@@ -92,18 +99,17 @@ public class AudibleDownloadManager
         }
     }
 
-    public async Task DownloadSeries(string url, string? userId, bool force)
+    public async Task DownloadSeries(string asin, int? userId, bool force)
     {
-        log.Debug("Downloading series: " + url);
+        log.Debug("Downloading series: " + asin);
 
-        var seriesAsin = ParseUtils.GetASINFromUrl(url);
-        if (seriesAsin == null)
+        if (asin == null)
         {
-            log.Error("Failed to parse series ASIN from url {0}", url);
+            log.Error("Failed to parse series ASIN from url {0}", asin);
             throw new FatalException("Failed to parse series ASIN from url");
         }
 
-        var storedSeries = await seriesService.GetSeriesAsin(seriesAsin);
+        var storedSeries = await seriesService.GetSeriesAsin(asin);
         if (storedSeries != null) await seriesService.SetSeriesChecked(storedSeries.Id);
 
         var shouldDownload = ShouldDownloadSeries(storedSeries, force);
@@ -114,10 +120,9 @@ public class AudibleDownloadManager
         }
 
         var start = DateTime.Now;
-        var parsedSeries = await dataGetter.ParseSeries(seriesAsin);
+        var parsedSeries = await dataGetter.ParseSeries(asin);
         log.Debug("Parsing series took: " + (DateTime.Now - start).TotalMilliseconds + " ms");
-        storedSeries = await seriesService.SaveOrGetSeries(parsedSeries.Asin, parsedSeries.Name, parsedSeries.Link,
-            parsedSeries.Summary);
+        storedSeries = await seriesService.SaveOrGetSeries(parsedSeries.Asin, parsedSeries.Name, parsedSeries.Link);
 
         // If nothing was updated, the flag would not have been set back to false
         await seriesService.SetSeriesShouldDownload(storedSeries.Id, false);
@@ -136,19 +141,24 @@ public class AudibleDownloadManager
             if (savedBook == null)
             {
                 log.Debug("Book " + book.Asin + " not found in database, creating temp book");
-                var bookId = await bookService.CreateTempBook(book.Asin);
-                await seriesService.AddBookToSeries(bookId, storedSeries.Id, book.BookNumber, book.Sort);
-                int? jobId = userId != null
-                    ? await userService.CreateJob(userId, "book", JsonSerializer.Serialize(
-                        new BookData { Asin = book.Asin }))
-                    : null;
+                var tempBook = await bookService.CreateTempBook(book.Asin);
+                await seriesService.AddBookToSeries(tempBook.Id, storedSeries.Id, book.BookNumber, book.Sort);
+                int? jobId = null;
+                if (userId != null)
+                {
+                    jobId = await userService
+                        .CreateJob((int)userId, "book", 
+                        JsonSerializer.Serialize(new BookData { Asin = book.Asin }));
+                }
+
+                log.Info("Adding book to download queue: " + book.Asin);
                 await downloadQueue.SendDownloadBook(book.Asin, jobId, userId);
             }
             else
             {
-                var series = savedBook.Series.Where(s =>
-                    string.Equals(s.Asin, storedSeries.Asin, StringComparison.InvariantCultureIgnoreCase)).ToList();
-                if (series.Count == 0)
+                var series = await seriesService.IsBookInSeriesByAsin(savedBook.Id, storedSeries.Asin);
+                
+                if (!series)
                 {
                     log.Debug($"Adding book {savedBook.Title} to series {storedSeries.Name}");
                     await seriesService.AddBookToSeries(savedBook.Id, storedSeries.Id, book.BookNumber, book.Sort);
@@ -156,11 +166,10 @@ public class AudibleDownloadManager
                 else
                 {
                     log.Debug($"Book {savedBook.Title} already exists in series: {storedSeries.Name}");
-                    if (book.BookNumber != null && book.BookNumber.Length > 0 &&
-                        series[0].BookNumber != book.BookNumber)
+                    if (!string.IsNullOrWhiteSpace(book.BookNumber) || book.Sort != null)
                     {
                         log.Debug($"Updating book number for book: {savedBook.Title} with number {book.BookNumber}");
-                        await seriesService.UpdateBookNumber(savedBook.Id, storedSeries.Id, book.BookNumber);
+                        await seriesService.UpdateSeriesBookData(savedBook.Id, storedSeries.Id, book.BookNumber, book.Sort);
                     }
                 }
             }
@@ -236,7 +245,7 @@ public class AudibleDownloadManager
         return false;
     }
 
-    private async Task<AudibleBook?> DownloadAndCreateBook(string asin, string? userId)
+    private async Task<AudibleBook?> DownloadAndCreateBook(string asin, int? userId)
     {
         log.Debug("Downloading and create book from asin: " + asin);
         
@@ -249,9 +258,16 @@ public class AudibleDownloadManager
             throw new FatalException("Failed to parse book from HTML");
         }
 
+        int? publisherId = null;
+        if (!String.IsNullOrWhiteSpace(book.Publisher))
+        {
+            var publisher = await publisherService.SaveOrGetPublisher(book.Publisher);
+            publisherId = publisher.Id;
+        }
+
         start = DateTime.Now;
         var newBook =
-            await bookService.SaveBook(book.Asin, book.Link, book.Title, book.RuntimeSeconds, book.Released, book.Summary);
+            await bookService.SaveBook(book.Asin, book.Isbn, book.Link, book.Title, book.RuntimeSeconds, book.Released, book.Summary, publisherId);
         log.Debug("Created or updated book with id: " + newBook.Id + " in " + (DateTime.Now - start).TotalMilliseconds +
                   " ms");
 
@@ -268,23 +284,26 @@ public class AudibleDownloadManager
             $"Book had {book.Series.Count} series, {book.Authors.Count} authors, {book.Narrators.Count} narrators, {book.Categories.Count} categories, {book.Tags.Count} tags");
 
         foreach (var series in book.Series)
+        {
             try
             {
                 var newSeries = await seriesService.GetSeriesAsin(series.Asin) == null;
                 var savedSeries =
-                    await seriesService.SaveOrGetSeries(series.Asin, series.Name, series.Link, series.Summary);
+                    await seriesService.SaveOrGetSeries(series.Asin, series.Name, series.Link);
                 await seriesService.AddBookToSeries(bookId, savedSeries.Id, series.BookNumber, series.Sort);
 
                 if (newSeries || !savedSeries.ShouldDownload)
                 {
-                    log.Debug("Series was updated mover 1 hour ago, updating the series");
                     await seriesService.SetSeriesShouldDownload(savedSeries.Id, true);
-                    int? jobId = userId != null
-                        ? await userService.CreateJob(userId, "series",
+                    int? jobId = null;
+                    if (userId != null)
+                    {
+                        jobId = await userService.CreateJob((int)userId, "series",
                             JsonSerializer.Serialize(new SeriesData
-                                { Asin = savedSeries.Asin }))
-                        : null;
-                    await downloadQueue.SendDownloadSeries(savedSeries.Link, jobId, userId);
+                                { Asin = savedSeries.Asin }));
+                    }
+                    log.Info("Adding series to download queue: " + savedSeries.Asin);
+                    await downloadQueue.SendDownloadSeries(savedSeries.Asin, jobId, userId);
                 }
             }
             catch (Exception e)
@@ -292,6 +311,7 @@ public class AudibleDownloadManager
                 log.Error("Failed to process series {0} for book {1}", series.Name, book.Title);
                 throw e;
             }
+        }
 
         foreach (var author in book.Authors)
         {

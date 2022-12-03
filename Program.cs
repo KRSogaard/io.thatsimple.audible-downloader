@@ -17,6 +17,8 @@ namespace AudibleDownloader;
 internal class Listener
 {
     private static readonly TimeSpan RefreshTimerSeconds = TimeSpan.FromMinutes(60);
+    private static readonly int MinProcessingTimeMs = 1000;
+    
     private readonly AudibleDownloadManager audibleDownloader;
     private readonly AuthorService authorService;
     private readonly BookService bookService;
@@ -30,6 +32,7 @@ internal class Listener
     private readonly StorageService storageService;
     private readonly TagService tagService;
     private readonly UserService userService;
+    private readonly PublisherService publisherService;
     private readonly AudibleDataGetter audibleDataGetter;
 
     public Listener()
@@ -63,24 +66,25 @@ internal class Listener
         userService = new UserService();
         storageService = new StorageService();
         downloadQueue = new DownloadQueue();
-        bookService = new BookService(authorService, narratorService, categoryService, tagService);
+        bookService = new BookService();
+        publisherService = new PublisherService();
         downloadService = new DownloadService(storageService);
         audibleDataGetter = new AudibleAPIDataGetter(downloadService);
 
         audibleDownloader = new AudibleDownloadManager(
             bookService, authorService, narratorService,
-            categoryService, tagService, seriesService, userService,
+            categoryService, tagService, seriesService, userService, publisherService,
             storageService, downloadService, downloadQueue, audibleDataGetter);
     }
 
     public static void Main(string[] args)
     {
         DateTime start = DateTime.Now;
-        // using (var context = new AudibleContext())
-        // {
-        //     context.Database.EnsureCreated();
-        // }
-        // Console.WriteLine($@"Ensure Created Took {(DateTime.Now - start).TotalMilliseconds} ms");
+        using (var context = new AudibleContext())
+        {
+            context.Database.EnsureCreated();
+        }
+        Console.WriteLine($@"Ensure Created Took {(DateTime.Now - start).TotalMilliseconds} ms");
         
         new Listener().Run().Wait();
     }
@@ -149,6 +153,7 @@ internal class Listener
                     var consumer = new EventingBasicConsumer(channel);
                     consumer.Received += async (model, ea) =>
                     {
+                        DateTime start = DateTime.Now;
                         var body = ea.Body.ToArray();
                         var message = Encoding.UTF8.GetString(body);
                         try
@@ -163,11 +168,15 @@ internal class Listener
                         {
                             log.Warn(e, "Got a retryable exception, requeueing message");
                             channel.BasicNack(ea.DeliveryTag, false, true);
+                            log.Debug("Sleeping for 2 sek after error");
+                            await Task.Delay(2000);
                         }
                         catch (FatalException e)
                         {
                             log.Fatal(e, "Got a fatal exception, not requeueing message");
                             channel.BasicNack(ea.DeliveryTag, false, false);
+                            log.Debug("Sleeping for 2 sek after error");
+                            await Task.Delay(2000);
                         }
                         catch (Exception e)
                         {
@@ -175,6 +184,17 @@ internal class Listener
                             log.Fatal(e, "Got unknown exception while processing message. Will redeliver? {0}",
                                 redeliver);
                             channel.BasicNack(ea.DeliveryTag, false, redeliver);
+                            log.Debug("Sleeping for 2 sek after error");
+                            await Task.Delay(2000);
+                        }
+                        finally
+                        {
+                            double waitTime = (DateTime.Now - start).TotalMilliseconds;
+                            if (waitTime < MinProcessingTimeMs)
+                            {
+                                log.Info("We are too fast, sleeping for {0} ms", MinProcessingTimeMs - waitTime);
+                                await Task.Delay((int)(MinProcessingTimeMs - waitTime));
+                            }
                         }
                     };
                     // This kicks off the reading from the queue
@@ -192,6 +212,7 @@ internal class Listener
 
     private async Task OnMessage(string message)
     {
+        DateTime start = DateTime.Now;
         dynamic json = JsonConvert.DeserializeObject<dynamic>(message);
         if (json == null)
         {
@@ -200,10 +221,10 @@ internal class Listener
         }
 
 
-        string? userId = json.userId;
+        int? userId = json.userId;
         bool addToUser = json.addToUser == true;
         bool force = json.force == true;
-        string? jobId = json.jobId;
+        int? jobId = json.jobId;
         string type = ((string)json.type).Trim();
         string asin = ((string)json.asin).Trim();
         
@@ -234,12 +255,16 @@ internal class Listener
                     throw new FatalException("Unknown message type");
             }
 
-            if (jobId != null) await userService.FinishJob(jobId);
+            if (jobId != null) await userService.FinishJob((int)jobId);
         }
         catch (FatalException e)
         {
-            log.Info("Delete job {0} as it cause a fatal exception", jobId);
-            await userService.FinishJob(jobId);
+            if (jobId != null)
+            {
+                log.Info("Delete job {0} as it cause a fatal exception", jobId);
+                await userService.FinishJob((int)jobId);
+            }
         }
+        log.Info($"Processing message took {(DateTime.Now - start).TotalMilliseconds} ms ({type}, {asin})");
     }
 }

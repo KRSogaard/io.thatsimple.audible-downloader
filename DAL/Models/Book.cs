@@ -5,6 +5,7 @@ public partial class Book
     public int Id { get; set; }
 
     public string Asin { get; set; }
+    public long? Isbn { get; set; }
     public string? Title { get; set; }
     public int? Length { get; set; }
     public string? Link { get; set; }
@@ -13,6 +14,7 @@ public partial class Book
     public long LastUpdated { get; set; }
     public long Created { get; set; }
 
+    public int? PublisherId { get; set; }
     public string? CategoriesCache { get; set; }
     public string? TagsCache { get; set; }
     public string? NarratorsCache { get; set; }
@@ -31,4 +33,6 @@ public partial class Book
     public virtual ICollection<TagsBook> TagsBooks { get; } = new List<TagsBook>();
 
     public virtual ICollection<UsersBook> UsersBooks { get; } = new List<UsersBook>();
+
+    public virtual Publisher? Publisher { get; }
 }

@@ -26,7 +26,7 @@ public class DownloadQueue
         };
     }
 
-    public Task SendDownloadSeries(string asin, int? jobId, string? userId, bool force = false)
+    public Task SendDownloadSeries(string asin, int? jobId, int? userId, bool force = false)
     {
         return GetChannel(async (channel, channelName) =>
         {
@@ -48,7 +48,7 @@ public class DownloadQueue
         });
     }
 
-    public Task SendDownloadBook(string asin, int? jobId, string? userId, bool addToUser = false, bool force = false)
+    public Task SendDownloadBook(string asin, int? jobId, int? userId, bool addToUser = false, bool force = false)
     {
         return GetChannel(async (channel, channelName) =>
         {
@@ -57,7 +57,7 @@ public class DownloadQueue
                 Asin = asin,
                 Type = "book",
                 JobId = jobId,
-                UserId = string.IsNullOrWhiteSpace(userId) ? null : userId,
+                UserId = userId,
                 AddToUser = addToUser,
                 Force = force
             });
