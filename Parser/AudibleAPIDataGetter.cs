@@ -165,23 +165,32 @@ public class AudibleAPIDataGetter : AudibleDataGetter {
             book.Categories.AddRange(CategoriesToAdd.Values);
 
             book.Series = new List<ParseAudioBookSeries>();
-            foreach (dynamic relationship in json.product.relationships) {
-                if (relationship.relationship_type.Value != "series") continue;
+            if (json.product.relationships != null)
+            {
+                foreach (dynamic relationship in json.product.relationships)
+                {
+                    if (relationship.relationship_type.Value != "series") continue;
 
-                string name = relationship.title.Value;
-                string seriesAsin = relationship.asin.Value;
-                ParseAudioBookSeries series = new();
-                series.Name = name;
-                series.Asin = seriesAsin;
-                series.Link = "https://www.audible.com/series/" +
-                              RegexHelper.Replace(@"[^\w]+", "-", name.Replace("'", ""))
-                              + "-Audiobooks/" + seriesAsin;
-                series.BookNumber = relationship.sequence?.Value;
-                if (int.TryParse(relationship.sort?.Value, out int sort))
-                    series.Sort = sort;
-                else
-                    log.Warn("Failed to parse \"{2}\" for series {0}, asin {1}", name, seriesAsin, relationship.sort?.Value);
-                book.Series.Add(series);
+                    string name = relationship.title.Value;
+                    string seriesAsin = relationship.asin.Value;
+                    ParseAudioBookSeries series = new();
+                    series.Name = name;
+                    series.Asin = seriesAsin;
+                    series.Link = "https://www.audible.com/series/" +
+                                  RegexHelper.Replace(@"[^\w]+", "-", name.Replace("'", ""))
+                                  + "-Audiobooks/" + seriesAsin;
+                    series.BookNumber = relationship.sequence?.Value;
+                    if (int.TryParse(relationship.sort?.Value, out int sort))
+                        series.Sort = sort;
+                    else
+                        log.Warn("Failed to parse \"{2}\" for series {0}, asin {1}", name, seriesAsin,
+                            relationship.sort?.Value);
+                    book.Series.Add(series);
+                }
+            }
+            else
+            {
+                log.Warn("There was no relationships from {0}, maybe it is not in a series", asin);
             }
 
             return book;

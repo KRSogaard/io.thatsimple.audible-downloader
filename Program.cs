@@ -204,7 +204,7 @@ internal class Listener {
         string asin = ((string)json.asin).Trim();
 
         if (type == null) {
-            log.Error("Failed to parse message \"{0}\" missing url", message);
+            log.Error("Failed to parse message \"{0}\" missing type", message);
             throw new FatalException("Failed to parse message");
         }
 

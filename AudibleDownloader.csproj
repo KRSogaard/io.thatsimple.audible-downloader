@@ -11,16 +11,16 @@
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
             <PrivateAssets>all</PrivateAssets>
         </PackageReference>
-        <PackageReference Include="Microsoft.Extensions.Hosting" Version="7.0.0"/>
-        <PackageReference Include="Minio" Version="4.0.6"/>
-        <PackageReference Include="MySQL.Data" Version="8.0.31"/>
-        <PackageReference Include="NLog" Version="5.0.5"/>
-        <PackageReference Include="Pomelo.EntityFrameworkCore.MySql" Version="7.0.0-alpha.1"/>
-        <PackageReference Include="RabbitMQ.Client" Version="6.4.0"/>
-        <PackageReference Include="AngleSharp" Version="0.17.1"/>
+        <PackageReference Include="Microsoft.Extensions.Hosting" Version="7.0.0" />
+        <PackageReference Include="Minio" Version="4.0.6" />
+        <PackageReference Include="MySQL.Data" Version="8.0.31" />
+        <PackageReference Include="NLog" Version="5.0.5" />
+        <PackageReference Include="Pomelo.EntityFrameworkCore.MySql" Version="7.0.0-alpha.1" />
+        <PackageReference Include="RabbitMQ.Client" Version="6.4.0" />
+        <PackageReference Include="AngleSharp" Version="0.17.1" />
     </ItemGroup>
     <ItemGroup>
-        <Content Include="nlog.config" CopyToOutputDirectory="Always"/>
-        <Content Include="appSettings.json" CopyToOutputDirectory="Always"/>
+        <Content Include="nlog.config" CopyToOutputDirectory="Always" />
+        <Content Include="appSettings.json" CopyToOutputDirectory="Always" />
     </ItemGroup>
 </Project>
